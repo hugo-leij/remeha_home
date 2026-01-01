@@ -3,11 +3,12 @@
 from typing import Any
 import logging
 
+import aiohttp
 import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.config_entry_oauth2_flow import AbstractOAuth2FlowHandler
 
 from .const import DOMAIN
@@ -51,9 +52,15 @@ class RemehaHomeLoginFlowHandler(AbstractOAuth2FlowHandler, domain=DOMAIN):
         """Handle a flow start."""
         await self.async_set_unique_id(DOMAIN)
 
+        # Create a new session with a cookie jar that does not quote cookies
+        # This is necessary to avoid issues with the Remeha Home authentication flow
+        cookie_jar = aiohttp.CookieJar(quote_cookie=False)
+
         self.async_register_implementation(
             self.hass,
-            RemehaHomeOAuth2Implementation(async_get_clientsession(self.hass)),
+            RemehaHomeOAuth2Implementation(
+                async_create_clientsession(self.hass, cookie_jar=cookie_jar)
+            ),
         )
 
         return await super().async_step_user(user_input)
