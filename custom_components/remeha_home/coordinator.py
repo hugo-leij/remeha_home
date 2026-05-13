@@ -39,6 +39,7 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
         self.appliance_last_consumption_data_update = {}
         self.dhw_activity_cache = {}
         self.heating_curve_data: dict[str, dict] = {}
+        self.activities_data: dict[str, list] = {}
 
     async def _async_update_data(self):
         """Fetch data from API endpoint.
@@ -190,6 +191,24 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
                             err,
                         )
 
+                # Fetch activities data once (re-fetched after writes)
+                if climate_zone_id not in self.activities_data:
+                    try:
+                        self.activities_data[climate_zone_id] = (
+                            await self.api.async_get_activities(climate_zone_id)
+                        )
+                        _LOGGER.debug(
+                            "Requested activities data for climate zone %s: %s",
+                            climate_zone_id,
+                            self.activities_data[climate_zone_id],
+                        )
+                    except ClientResponseError as err:
+                        _LOGGER.warning(
+                            "Failed to request activities data for climate zone %s: %s",
+                            climate_zone_id,
+                            err,
+                        )
+
                 self.device_info[climate_zone_id] = DeviceInfo(
                     identifiers={(DOMAIN, climate_zone_id)},
                     name=climate_zone["name"],
@@ -228,6 +247,10 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
     def get_heating_curve(self, climate_zone_id: str) -> dict | None:
         """Return heating curve data for the specified climate zone."""
         return self.heating_curve_data.get(climate_zone_id)
+
+    def get_activities(self, climate_zone_id: str) -> list | None:
+        """Return activities data for the specified climate zone."""
+        return self.activities_data.get(climate_zone_id)
 
     def _derive_dhw_activity(self, zone: dict) -> str | None:
         """Derive a human-friendly DHW activity label."""

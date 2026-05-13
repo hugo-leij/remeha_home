@@ -147,6 +147,26 @@ class RemehaHomeAPI:
         )
         response.raise_for_status()
 
+    async def async_get_activities(self, climate_zone_id: str) -> list:
+        """Get the activity definitions for a climate zone."""
+        response = await self._async_api_request(
+            "GET",
+            f"/climate-zones/{climate_zone_id}/activities",
+        )
+        response.raise_for_status()
+        return await response.json()
+
+    async def async_set_heating_activities(
+        self, climate_zone_id: str, activities: list[dict]
+    ) -> None:
+        """Set the heating activity temperatures for a climate zone."""
+        response = await self._async_api_request(
+            "PUT",
+            f"/climate-zones/{climate_zone_id}/activities/heating",
+            json=activities,
+        )
+        response.raise_for_status()
+
     async def async_get_appliance_technical_information(
         self, appliance_id: str
     ) -> dict:
