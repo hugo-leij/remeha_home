@@ -307,6 +307,7 @@ class RemehaHomeActivityNumber(CoordinatorEntity, NumberEntity):
         self.api = api
         self.climate_zone_id = climate_zone_id
         self.activity_number = activity_number
+        self._cached_activity: dict | None = None
 
         key = f"activity_{activity_number}_temperature"
         self._attr_unique_id = "_".join([DOMAIN, self.climate_zone_id, key])
@@ -314,14 +315,17 @@ class RemehaHomeActivityNumber(CoordinatorEntity, NumberEntity):
 
     @property
     def _activity(self) -> dict | None:
-        """Return the activity data for this entity."""
+        """Return the activity data, falling back to cached data when unavailable."""
         activities = self.coordinator.get_activities(self.climate_zone_id)
-        if activities is None:
-            return None
-        return next(
-            (a for a in activities if a["activityNumber"] == self.activity_number),
-            None,
-        )
+        if activities is not None:
+            match = next(
+                (a for a in activities if a["activityNumber"] == self.activity_number),
+                None,
+            )
+            if match is not None:
+                self._cached_activity = match
+            return match
+        return self._cached_activity
 
     @property
     def available(self) -> bool:
