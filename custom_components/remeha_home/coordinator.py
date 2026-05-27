@@ -19,6 +19,16 @@ from .util import detect_dhw_setpoint_activity
 
 _LOGGER = logging.getLogger(__name__)
 
+PRODUCER_TYPE_NAMES = {
+    "HeatPumpAirSource": "Heat Pump (Air Source)",
+    "HeatPumpGroundSource": "Heat Pump (Ground Source)",
+    "HeatPumpWaterSource": "Heat Pump (Water Source)",
+    "GasBoiler": "Gas Boiler",
+    "OilBoiler": "Oil Boiler",
+    "ElectricBoiler": "Electric Boiler",
+    "CHP": "CHP",
+}
+
 PRODUCER_STATS = [
     "energyConsumptionCH",
     "energyConsumptionDHW",
@@ -292,19 +302,21 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
                     via_device=(DOMAIN, appliance_id),
                 )
 
-            if appliance["consumptionData"]["producerPerformanceStatistics"]:
-                if len(appliance["consumptionData"]["producerPerformanceStatistics"]["producers"]) >1:
-                    """Only add producers when more then 1"""
-                    for producer in appliance["consumptionData"]["producerPerformanceStatistics"]["producers"]:
-                        producer_id ="{0}_{1}".format(appliance_id,producer["instanceWithinDevice"])
-                        self.items[producer_id] = producer
-                        self.device_info[producer_id] = DeviceInfo(
-                            identifiers={(DOMAIN, producer_id)},
-                            name="{0}_{1}".format(producer["producerType"],producer["instanceWithinDevice"]),
-                            manufacturer="Remeha",
-                            model=producer["producerType"],
-                            via_device=(DOMAIN, appliance_id),
-                        )
+            producer_stats = appliance["consumptionData"].get("producerPerformanceStatistics")
+            if producer_stats and len(producer_stats["producers"]) > 1:
+                for producer in producer_stats["producers"]:
+                    producer_id = "{0}_{1}".format(appliance_id, producer["instanceWithinDevice"])
+                    self.items[producer_id] = producer
+                    producer_type = producer["producerType"]
+                    producer_label = PRODUCER_TYPE_NAMES.get(producer_type, producer_type)
+                    instance = producer["instanceWithinDevice"]
+                    self.device_info[producer_id] = DeviceInfo(
+                        identifiers={(DOMAIN, producer_id)},
+                        name=f"{producer_label} {instance}",
+                        manufacturer="Remeha",
+                        model=producer_type,
+                        via_device=(DOMAIN, appliance_id),
+                    )
         return data
 
     def get_by_id(self, item_id: str):
