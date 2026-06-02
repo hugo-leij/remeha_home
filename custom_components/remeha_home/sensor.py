@@ -56,10 +56,11 @@ async def async_setup_entry(
                 entities.append(
                     RemehaHomeSensor(coordinator, hot_water_zone_id, entity_description)
                 )
-        if appliance["consumptionData"]["producerPerformanceStatistics"]:
-            if len(appliance["consumptionData"]["producerPerformanceStatistics"]["producers"]) > 1:
+        producer_stats = appliance["consumptionData"].get("producerPerformanceStatistics")
+        if producer_stats and producer_stats.get("producers"):
+            if len(producer_stats["producers"]) > 1:
                 """Only add producers when more then 1"""
-                for producer in appliance["consumptionData"]["producerPerformanceStatistics"]["producers"]:
+                for producer in producer_stats["producers"]:
                     producer_id ="{0}_{1}".format(appliance_id,producer["instanceWithinDevice"])
                     if producer["energyType"] == "NaturalGas":
                         for entity_description in GAS_PRODUCER_SENSOR_TYPES:
