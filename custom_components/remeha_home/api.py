@@ -247,20 +247,16 @@ class RemehaHomeAPI:
         )
         response.raise_for_status()
 
-    async def async_set_hot_water_boost(
-        self,
-        hot_water_zone_id: str,
-        enable: bool,
-        duration: int | None = None,
-    ):
-        """Enable or disable hot water boost for the zone."""
-        payload = {"boostMode": enable}
-        if enable and duration is not None:
-            payload["boostDuration"] = duration
+    async def async_set_hot_water_boost(self, hot_water_zone_id: str):
+        """Activate boost mode for a DHW zone.
+
+        Boost heats the water to the comfort setpoint for ~30 minutes. The API
+        only accepts this from schedule mode and takes no request body, like the
+        other DHW mode endpoints. Boost is cancelled by switching to another mode.
+        """
         response = await self._async_api_request(
             "POST",
             f"/hot-water-zones/{hot_water_zone_id}/modes/boost",
-            json=payload,
         )
         response.raise_for_status()
 

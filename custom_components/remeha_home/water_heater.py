@@ -1,6 +1,7 @@
 """Platform for DHW control."""
 
 from __future__ import annotations
+import logging
 from typing import Any
 
 from homeassistant.components.water_heater import (
@@ -17,11 +18,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+import homeassistant.util.dt as dt_util
 
 from .api import RemehaHomeAPI
 from .const import DOMAIN
 from .coordinator import RemehaHomeUpdateCoordinator
 from .util import detect_dhw_setpoint_activity
+
+_LOGGER = logging.getLogger(__name__)
 
 REMEHA_DHW_MODE_TO_OPERATION = {
     "ContinuousComfort": STATE_PERFORMANCE,
@@ -103,8 +107,16 @@ class RemehaHomeWaterHeater(CoordinatorEntity, WaterHeaterEntity):
 
     @property
     def operation_list(self) -> list[str]:
-        """Return the list of available operation modes."""
-        return [STATE_HEAT_PUMP, STATE_PERFORMANCE, STATE_ECO, STATE_HIGH_DEMAND]
+        """Return the list of available operation modes.
+
+        Boost can only be started from schedule mode, so it is only offered when
+        the zone is currently scheduling (or already boosting, to keep the
+        active state valid).
+        """
+        modes = [STATE_HEAT_PUMP, STATE_PERFORMANCE, STATE_ECO]
+        if self._data.get("dhwZoneMode") in ("Scheduling", "Boost"):
+            modes.append(STATE_HIGH_DEMAND)
+        return modes
 
     @property
     def target_temperature(self) -> float | None:
@@ -158,11 +170,33 @@ class RemehaHomeWaterHeater(CoordinatorEntity, WaterHeaterEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional attributes for diagnostics."""
-        return {
+        attributes = {
             "dhw_status": self._data.get("dhwStatus"),
             "boost_mode_end_time": self._data.get("boostModeEndTime"),
             "heating_state": self._heating_state(),
         }
+        remaining = self._remaining_boost_minutes()
+        if remaining is not None:
+            attributes["remaining_boost_time"] = f"{remaining} minutes"
+        return attributes
+
+    def _remaining_boost_minutes(self) -> int | None:
+        """Return the remaining boost time in minutes, or None when not boosting."""
+        if self._data.get("dhwZoneMode") != "Boost":
+            return None
+        end_time = self._data.get("boostModeEndTime")
+        if not end_time:
+            return None
+        parsed = dt_util.parse_datetime(end_time)
+        # Guard against the API's sentinel "0001-01-01" timestamps.
+        if parsed is None or parsed.year <= 1:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=dt_util.DEFAULT_TIME_ZONE)
+        remaining = (parsed - dt_util.utcnow()).total_seconds()
+        if remaining <= 0:
+            return None
+        return int(remaining / 60)
 
     def _heating_state(self) -> str | None:
         """Return an auxiliary heating state."""
@@ -209,8 +243,14 @@ class RemehaHomeWaterHeater(CoordinatorEntity, WaterHeaterEntity):
         elif target_mode == "Off":
             await self.api.async_set_dhw_mode_eco(self.hot_water_zone_id)
         elif target_mode == "Boost":
-            duration = self._data.get("boostDuration") or 30
-            await self.api.async_set_hot_water_boost(self.hot_water_zone_id, True, duration)
+            current_mode = self._data.get("dhwZoneMode")
+            if current_mode != "Scheduling":
+                _LOGGER.warning(
+                    "DHW boost can only be activated from schedule mode (current: %s)",
+                    current_mode,
+                )
+                return
+            await self.api.async_set_hot_water_boost(self.hot_water_zone_id)
         else:
             return
 
