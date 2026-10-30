@@ -18,6 +18,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed
 
 from .api import RemehaHomeAPI
 from .const import DOMAIN
+from .producer_ids import ProducerIdResolver
 from .util import detect_dhw_setpoint_activity
 
 _LOGGER = logging.getLogger(__name__)
@@ -59,11 +60,6 @@ def get_producers(consumption: dict) -> list[dict]:
     return (producer_stats or {}).get("producers") or []
 
 
-def get_producer_id(appliance_id: str, producer: dict) -> str:
-    """Return the item id of a producer."""
-    return f"{appliance_id}_{producer['instanceWithinDevice']}"
-
-
 class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
     """Remeha Home update coordinator."""
 
@@ -88,6 +84,8 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
         # during the day apart from the start of a new day
         self.appliance_consumption_data_date: dict[str, date] = {}
         self.appliance_producer_ids: dict[str, set[str]] = {}
+        self.producer_id_resolver = ProducerIdResolver()
+        self.on_producer_ids_changed = None
         self.dhw_activity_cache = {}
         self.heating_curve_data: dict[str, dict] = {}
         self.heating_curve_last_update: dict[str, datetime] = {}
@@ -346,11 +344,15 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
         self, appliance_id: str, appliance_device_id: str, producers: list[dict]
     ) -> None:
         """Register the producers (heat sources) of an appliance as devices."""
+        resolved, changed = self.producer_id_resolver.resolve(
+            appliance_id,
+            producers,
+            appliance_type=self.items[appliance_id].get("applianceType"),
+        )
         type_counts = Counter(producer.get("producerType") for producer in producers)
         current_ids = set()
 
-        for producer in producers:
-            producer_id = get_producer_id(appliance_id, producer)
+        for producer, producer_id in resolved:
             current_ids.add(producer_id)
             self.items[producer_id] = producer
 
@@ -379,6 +381,8 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
                 **dict.fromkeys(PRODUCER_STATS, 0.0),
             }
         known_ids |= current_ids
+        if changed and self.on_producer_ids_changed is not None:
+            self.on_producer_ids_changed()
 
     def _process_consumption_data(self, appliance: dict, consumption: dict) -> dict:
         """Prepare the consumption data of an appliance and its producers."""

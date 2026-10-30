@@ -59,6 +59,16 @@ You can simply log in using the credentials that you would use in the respective
     - For heat pumps (and other electric producers): the energy consumed and delivered today for heating, hot water and cooling, and the seasonal efficiency
     - For gas boilers: the gas used today for heating and hot water, in m³
 
+    Producer devices normally keep their legacy instance-based IDs. On some hybrid
+    installations the heat pump and boiler share an instance number. The integration
+    then gives the additional producer a type-suffixed ID and stores the assignments
+    across Home Assistant restarts, including when the API temporarily omits a producer.
+    On a heat-pump appliance that initially reports only its gas boiler, the legacy ID
+    is reserved for the heat pump. Standalone devices and installations without ID
+    collisions retain their existing IDs. Previously misidentified entities are not
+    automatically renamed or deleted: review their names, units and historical
+    measurements after upgrading.
+
     The energy values come from Remeha and are updated every 15 minutes. Remeha only reports them with a delay of about 2 hours, and right after midnight the values of the new day start at 0.
     On hybrid setups where the existing gas boiler heats the hot water, such as the Remeha Elga Ace, Remeha does not report the gas used for hot water, so that sensor stays at 0.
 

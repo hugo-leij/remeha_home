@@ -14,6 +14,7 @@ from .config_flow import RemehaHomeLoginFlowHandler
 from .const import DOMAIN
 from .coordinator import RemehaHomeUpdateCoordinator
 from .holiday import STORAGE_VERSION, HolidayModeRestorer, storage_key
+from .producer_ids import ProducerIdResolver
 
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
@@ -48,6 +49,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     oauth_session = config_entry_oauth2_flow.OAuth2Session(hass, entry, implementation)
     api = RemehaHomeAPI(oauth_session)
     coordinator = RemehaHomeUpdateCoordinator(hass, api, entry)
+    producer_store = Store(hass, 1, f"{DOMAIN}_producer_ids_{entry.entry_id}")
+    saved_producer_ids = await producer_store.async_load() or {}
+    coordinator.producer_id_resolver = ProducerIdResolver(saved_producer_ids)
+
+    def save_producer_ids() -> None:
+        """Persist assigned producer IDs without affecting climate updates."""
+        hass.async_create_task(
+            producer_store.async_save(dict(coordinator.producer_id_resolver.assignments))
+        )
+
+    coordinator.on_producer_ids_changed = save_producer_ids
     holiday_restorer = HolidayModeRestorer(hass, entry, coordinator, api)
     await holiday_restorer.async_load()
 
@@ -76,3 +88,4 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Remove the modes saved before a holiday."""
     await Store(hass, STORAGE_VERSION, storage_key(entry)).async_remove()
+    await Store(hass, 1, f"{DOMAIN}_producer_ids_{entry.entry_id}").async_remove()
