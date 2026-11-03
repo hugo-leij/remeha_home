@@ -10,8 +10,11 @@ from __future__ import annotations
 from collections import Counter
 from datetime import date, timedelta
 import math
+import logging
 
 from .producer_ids import is_valid_producer
+
+_LOGGER = logging.getLogger(__name__)
 
 MAX_HISTORY_DAYS = 366
 HISTORY_BATCH_DAYS = 31
@@ -155,18 +158,49 @@ def normalize_history_day(item: dict) -> dict | None:
 
     return {
         "date": day.isoformat(),
-        "timestamp": timestamp,
-        "heat_pump_consumed_kwh": consumed,
-        "heat_pump_delivered_kwh": delivered,
-        "heat_pump_cop": cop,
+        "heat_pump_heating_consumed_kwh": consumed,
+        "heat_pump_heating_delivered_kwh": delivered,
+        "heat_pump_heating_cop": cop,
         "gas_heating_consumed_kwh": gas,
         "producers": producers,
     }
 
 
+def _round_day(row: dict) -> dict:
+    """Round public values only after all calculations use original precision."""
+    rounded = dict(row)
+    for key in (
+        "heat_pump_heating_consumed_kwh",
+        "heat_pump_heating_delivered_kwh",
+        "heat_pump_heating_cop",
+        "gas_heating_consumed_kwh",
+    ):
+        if rounded[key] is not None:
+            rounded[key] = round(rounded[key], 2)
+    rounded["producers"] = [
+        {
+            **producer,
+            "heating_consumed_kwh": (
+                round(producer["heating_consumed_kwh"], 2)
+                if producer["heating_consumed_kwh"] is not None
+                else None
+            ),
+            "heating_delivered_kwh": (
+                round(producer["heating_delivered_kwh"], 2)
+                if producer["heating_delivered_kwh"] is not None
+                else None
+            ),
+        }
+        for producer in row["producers"]
+    ]
+    return rounded
+
+
 def combine_history(start: date, end: date, responses: list[dict]) -> dict:
-    """Assemble chronological API responses and report absent days as unknown."""
-    by_date = {}
+    """Assemble local calendar days and report conflicting records as missing."""
+    by_date: dict[str, dict] = {}
+    conflicting_dates: set[str] = set()
+
     for response in responses:
         rows = response.get("data") if isinstance(response, dict) else None
         if not isinstance(rows, list):
@@ -175,22 +209,67 @@ def combine_history(start: date, end: date, responses: list[dict]) -> dict:
             row = normalize_history_day(raw_day)
             if row is None or not start <= date.fromisoformat(row["date"]) <= end:
                 continue
-            if row["date"] in by_date and row != by_date[row["date"]]:
-                raise ValueError(
-                    "Remeha returned conflicting entries for " + row["date"]
-                )
-            by_date[row["date"]] = row
 
-    days = [by_date[key] for key in sorted(by_date)]
+            day = row["date"]
+            if day in conflicting_dates:
+                continue
+            if day in by_date and row != by_date[day]:
+                # Do not allow a third record to restore a conflicted day.
+                conflicting_dates.add(day)
+                del by_date[day]
+                _LOGGER.warning(
+                    "Conflicting Remeha energy history records for %s; "
+                    "reporting the day as missing",
+                    day,
+                )
+                continue
+            by_date[day] = row
+
+    days_requested = (end - start).days + 1
+    days_reported = len(by_date)
+    complete = days_reported == days_requested
+
+    def total(field: str) -> float | None:
+        """Only claim a complete-period total with every daily value present."""
+        if not complete:
+            return None
+        return _sum_complete([row[field] for row in by_date.values()])
+
+    consumed = total("heat_pump_heating_consumed_kwh")
+    delivered = total("heat_pump_heating_delivered_kwh")
+    gas = total("gas_heating_consumed_kwh")
+    period_cop = (
+        delivered / consumed
+        if consumed is not None and consumed > 0 and delivered is not None
+        else None
+    )
+
     missing = [
         (start + timedelta(days=offset)).isoformat()
-        for offset in range((end - start).days + 1)
+        for offset in range(days_requested)
         if (start + timedelta(days=offset)).isoformat() not in by_date
     ]
     return {
         "start_date": start.isoformat(),
         "end_date": end.isoformat(),
-        "days": days,
+        "days": [_round_day(by_date[key]) for key in sorted(by_date)],
         "missing_dates": missing,
+        "period": {
+            "complete": complete,
+            "days_requested": days_requested,
+            "days_reported": days_reported,
+            "heat_pump_heating_consumed_kwh": (
+                round(consumed, 2) if consumed is not None else None
+            ),
+            "heat_pump_heating_delivered_kwh": (
+                round(delivered, 2) if delivered is not None else None
+            ),
+            "heat_pump_heating_cop": (
+                round(period_cop, 2) if period_cop is not None else None
+            ),
+            "gas_heating_consumed_kwh": (
+                round(gas, 2) if gas is not None else None
+            ),
+        },
         "note": "Remeha's indicative estimates; no independently verified heat meter",
     }

@@ -48,9 +48,9 @@ def test_normalize_hybrid_and_cop() -> None:
     row = normalize_history_day(_january_9())
     assert row is not None
     assert row["date"] == "2026-01-09"
-    assert row["heat_pump_consumed_kwh"] == 18.0
-    assert row["heat_pump_delivered_kwh"] == 68.0
-    assert row["heat_pump_cop"] == pytest.approx(68 / 18)
+    assert row["heat_pump_heating_consumed_kwh"] == 18.0
+    assert row["heat_pump_heating_delivered_kwh"] == 68.0
+    assert row["heat_pump_heating_cop"] == pytest.approx(68 / 18)
     assert row["gas_heating_consumed_kwh"] == 2.0
     assert len(row["producers"]) == 2
     assert all("instance_within_device" not in row for row in row["producers"])
@@ -69,9 +69,9 @@ def test_incomplete_identified_heat_pump_makes_total_unknown() -> None:
         }
     )
     row = normalize_history_day(item)
-    assert row["heat_pump_consumed_kwh"] is None
-    assert row["heat_pump_delivered_kwh"] is None
-    assert row["heat_pump_cop"] is None
+    assert row["heat_pump_heating_consumed_kwh"] is None
+    assert row["heat_pump_heating_delivered_kwh"] is None
+    assert row["heat_pump_heating_cop"] is None
     assert row["gas_heating_consumed_kwh"] == 2.0
     assert len(row["producers"]) == 2
 
@@ -82,9 +82,9 @@ def test_duplicate_heat_pump_records_are_not_double_counted() -> None:
     producers = item["producerPerformanceStatistics"]["producers"]
     producers.append(copy.deepcopy(producers[0]))
     row = normalize_history_day(item)
-    assert row["heat_pump_consumed_kwh"] is None
-    assert row["heat_pump_delivered_kwh"] is None
-    assert row["heat_pump_cop"] is None
+    assert row["heat_pump_heating_consumed_kwh"] is None
+    assert row["heat_pump_heating_delivered_kwh"] is None
+    assert row["heat_pump_heating_cop"] is None
     assert row["gas_heating_consumed_kwh"] == 2.0
     assert len(row["producers"]) == 1
 
@@ -95,8 +95,8 @@ def test_duplicate_gas_producer_only_invalidates_gas() -> None:
     producers = item["producerPerformanceStatistics"]["producers"]
     producers.append(copy.deepcopy(producers[1]))
     row = normalize_history_day(item)
-    assert row["heat_pump_consumed_kwh"] == 18.0
-    assert row["heat_pump_delivered_kwh"] == 68.0
+    assert row["heat_pump_heating_consumed_kwh"] == 18.0
+    assert row["heat_pump_heating_delivered_kwh"] == 68.0
     assert row["gas_heating_consumed_kwh"] is None
 
 
@@ -106,7 +106,7 @@ def test_shared_instance_and_distinct_pumps_remain_valid() -> None:
     producers = item["producerPerformanceStatistics"]["producers"]
     producers[1]["instanceWithinDevice"] = 1
     row = normalize_history_day(item)
-    assert row["heat_pump_consumed_kwh"] == 18.0
+    assert row["heat_pump_heating_consumed_kwh"] == 18.0
     assert row["gas_heating_consumed_kwh"] == 2.0
 
     extra_pump = copy.deepcopy(producers[0])
@@ -115,9 +115,9 @@ def test_shared_instance_and_distinct_pumps_remain_valid() -> None:
     extra_pump["energyProductionCH"] = 4.0
     producers.append(extra_pump)
     row = normalize_history_day(item)
-    assert row["heat_pump_consumed_kwh"] == 19.0
-    assert row["heat_pump_delivered_kwh"] == 72.0
-    assert row["heat_pump_cop"] == pytest.approx(72 / 19)
+    assert row["heat_pump_heating_consumed_kwh"] == 19.0
+    assert row["heat_pump_heating_delivered_kwh"] == 72.0
+    assert row["heat_pump_heating_cop"] == pytest.approx(72 / 19)
 
 
 def test_malformed_performance_statistics_remain_unknown() -> None:
@@ -125,7 +125,7 @@ def test_malformed_performance_statistics_remain_unknown() -> None:
     item = _january_9()
     item["producerPerformanceStatistics"] = []
     row = normalize_history_day(item)
-    assert row["heat_pump_consumed_kwh"] is None
+    assert row["heat_pump_heating_consumed_kwh"] is None
     assert row["gas_heating_consumed_kwh"] is None
 
 
@@ -156,9 +156,9 @@ def test_completed_daily_history_across_dst_matches_observed_action_values() -> 
         result["days"], expected, strict=True
     ):
         assert row["date"] == day
-        assert row["heat_pump_consumed_kwh"] == consumed
-        assert row["heat_pump_delivered_kwh"] == delivered
-        assert row["heat_pump_cop"] == pytest.approx(delivered / consumed)
+        assert row["heat_pump_heating_consumed_kwh"] == consumed
+        assert row["heat_pump_heating_delivered_kwh"] == delivered
+        assert row["heat_pump_heating_cop"] == round(delivered / consumed, 2)
         assert row["gas_heating_consumed_kwh"] == 0.0
 
 
@@ -167,9 +167,9 @@ def test_missing_heat_pump_is_unknown_not_zero() -> None:
     item = _january_9()
     item["producerPerformanceStatistics"] = {"producers": []}
     row = normalize_history_day(item)
-    assert row["heat_pump_consumed_kwh"] is None
-    assert row["heat_pump_delivered_kwh"] is None
-    assert row["heat_pump_cop"] is None
+    assert row["heat_pump_heating_consumed_kwh"] is None
+    assert row["heat_pump_heating_delivered_kwh"] is None
+    assert row["heat_pump_heating_cop"] is None
     assert row["gas_heating_consumed_kwh"] is None
 
 
@@ -180,22 +180,28 @@ def test_invalid_and_zero_energy_no_cop() -> None:
         producer = item["producerPerformanceStatistics"]["producers"][0]
         producer["energyConsumptionCH"] = consumed
         producer["energyProductionCH"] = delivered
-        assert normalize_history_day(item)["heat_pump_cop"] is None
+        assert normalize_history_day(item)["heat_pump_heating_cop"] is None
 
 
 def test_empty_history_and_duplicate_guard() -> None:
-    """Unreported days remain missing, and mismatched duplicate days fail."""
+    """Unreported and conflicting dates remain missing without failing the action."""
     start, end = date(2026, 1, 9), date(2026, 1, 10)
     result = combine_history(start, end, [{"data": [_january_9()]}])
     assert result["missing_dates"] == ["2026-01-10"]
     assert len(result["days"]) == 1
+    assert result["period"]["heat_pump_heating_cop"] is None
 
     altered = _january_9()
     altered["producerPerformanceStatistics"]["producers"][0]["energyConsumptionCH"] = (
         17.0
     )
-    with pytest.raises(ValueError, match="conflicting entries"):
-        combine_history(start, end, [{"data": [_january_9(), altered]}])
+    result = combine_history(
+        start, end, [{"data": [_january_9(), altered, _january_9()]}]
+    )
+    assert result["days"] == []
+    assert result["missing_dates"] == ["2026-01-09", "2026-01-10"]
+    assert result["period"]["complete"] is False
+    assert result["period"]["heat_pump_heating_cop"] is None
 
 
 def test_history_batches() -> None:
@@ -260,7 +266,7 @@ async def test_action_returns_history(
         return_response=True,
     )
     assert result["appliance_id"] == APPLIANCE_ID
-    assert result["days"][0]["heat_pump_cop"] == pytest.approx(68 / 18)
+    assert result["days"][0]["heat_pump_heating_cop"] == round(68 / 18, 2)
     assert not result["missing_dates"]
     mock_api.async_get_consumption_data_for_range.assert_awaited_once_with(
         APPLIANCE_ID, date(2026, 1, 9), date(2026, 1, 9)
@@ -326,3 +332,81 @@ async def test_action_rejects_wrong_device_and_dates(
             return_response=True,
         )
     mock_api.async_get_consumption_data_for_range.assert_not_awaited()
+
+
+def test_selected_period_cop_is_weighted_and_daily_cops_remain() -> None:
+    """Period COP is total heat divided by total electricity, not mean daily COP."""
+    first = _january_9()
+    second = _january_9()
+    second["timeStamp"] = "2026-01-10T00:00:00+00:00"
+    first_pump = first["producerPerformanceStatistics"]["producers"][0]
+    second_pump = second["producerPerformanceStatistics"]["producers"][0]
+    first_pump["energyConsumptionCH"] = 1
+    first_pump["energyProductionCH"] = 8
+    second_pump["energyConsumptionCH"] = 9
+    second_pump["energyProductionCH"] = 36
+
+    result = combine_history(
+        date(2026, 1, 9), date(2026, 1, 10), [{"data": [first, second]}]
+    )
+
+    assert [day["heat_pump_heating_cop"] for day in result["days"]] == [8.0, 4.0]
+    assert result["period"]["complete"] is True
+    assert result["period"]["days_requested"] == 2
+    assert result["period"]["days_reported"] == 2
+    assert result["period"]["heat_pump_heating_consumed_kwh"] == 10.0
+    assert result["period"]["heat_pump_heating_delivered_kwh"] == 44.0
+    assert result["period"]["heat_pump_heating_cop"] == 4.4
+    assert "timestamp" not in result["days"][0]
+
+
+def test_response_values_rounded_at_output_boundary() -> None:
+    """Round COP and kWh for the action, without rounding input arithmetic."""
+    item = _january_9()
+    pump = item["producerPerformanceStatistics"]["producers"][0]
+    pump["energyConsumptionCH"] = 1.2345
+    pump["energyProductionCH"] = 5.6789
+    result = combine_history(date(2026, 1, 9), date(2026, 1, 9), [{"data": [item]}])
+    day = result["days"][0]
+    assert day["heat_pump_heating_consumed_kwh"] == 1.23
+    assert day["heat_pump_heating_delivered_kwh"] == 5.68
+    assert day["heat_pump_heating_cop"] == round(5.6789 / 1.2345, 2)
+    assert day["producers"][0]["heating_consumed_kwh"] == 1.23
+    assert result["period"]["heat_pump_heating_consumed_kwh"] == 1.23
+    assert result["period"]["heat_pump_heating_cop"] == round(5.6789 / 1.2345, 2)
+
+
+def test_missing_gas_does_not_hide_valid_heat_pump_period_cop() -> None:
+    """Gas and electricity validity remain independent on complete dates."""
+    item = _january_9()
+    item["producerPerformanceStatistics"]["producers"][1]["energyConsumptionCH"] = None
+    result = combine_history(date(2026, 1, 9), date(2026, 1, 9), [{"data": [item]}])
+    assert result["period"]["complete"] is True
+    assert result["period"]["gas_heating_consumed_kwh"] is None
+    assert result["period"]["heat_pump_heating_cop"] == round(68 / 18, 2)
+
+
+def test_conflicting_day_logs_warning(caplog: pytest.LogCaptureFixture) -> None:
+    """Conflict is flagged by date without leaking producer payloads to logs."""
+    altered = _january_9()
+    altered["producerPerformanceStatistics"]["producers"][0]["energyConsumptionCH"] = 12
+    with caplog.at_level("WARNING"):
+        result = combine_history(
+            date(2026, 1, 9),
+            date(2026, 1, 9),
+            [{"data": [_january_9(), altered, _january_9()]}],
+        )
+    assert result["missing_dates"] == ["2026-01-09"]
+    assert "2026-01-09" in caplog.text
+    assert "Conflicting" in caplog.text
+
+
+def test_unmodified_real_consumption_fixture_has_expected_shape() -> None:
+    """Check the existing anonymized daily API fixture without synthesized rows."""
+    raw = load_fixture("consumption.json")
+    assert isinstance(raw["data"], list)
+    assert isinstance(raw["data"][0]["producerPerformanceStatistics"]["producers"], list)
+    row = normalize_history_day(raw["data"][0])
+    assert row is not None
+    assert row["heat_pump_heating_consumed_kwh"] == 4.0
+    assert row["gas_heating_consumed_kwh"] == 1.0

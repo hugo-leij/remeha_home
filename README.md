@@ -68,11 +68,9 @@ You can simply log in using the credentials that you would use in the respective
 
 ### Read-only energy history
 
-Use the `remeha_home.get_energy_history` action in **Developer tools → Actions**
-to retrieve the Remeha cloud's indicative daily energy estimates from a past
-period. Select the Remeha appliance, heat-pump producer or boiler producer in
-the device picker. The history is always retrieved for its parent appliance,
-with heat sources reported separately.
+The read-only `remeha_home.get_energy_history` action retrieves Remeha's daily
+**space-heating** energy estimates for up to 366 inclusive local calendar days.
+Choose a Remeha appliance or producer in **Developer tools → Actions**:
 
 ```yaml
 action: remeha_home.get_energy_history
@@ -82,23 +80,11 @@ data:
   end_date: "2026-01-31"
 ```
 
-The action **returns JSON data**, with one record per reported calendar day:
-`heat_pump_consumed_kwh`, `heat_pump_delivered_kwh`, `heat_pump_cop`,
-`gas_heating_consumed_kwh`, and a `producers` list containing the original
-heating consumption/production estimates for each valid producer.
-`missing_dates` lists days without a reported daily record. Missing or
-ambiguous producer totals and COP remain `null`, not zero. The data can be copied from
-the action response for offline analysis. It is not automatically exported as
-a CSV or inserted into Home Assistant statistics.
-
-Both dates are included, with a limit of 366 days per action. The integration
-automatically splits long requests into batches of at most 31 days. It reuses
-the existing OAuth credentials and never changes your thermostat or publishes
-historical data as new sensor states. These are **Remeha's estimates**, not
-independently calibrated metered heat; the calculated daily COP is the heat
-pump's estimated delivered *space-heating* kWh divided by its estimated
-electrical input kWh, not the API's `seasonalEfficiency` field. A hybrid gas
-boiler's heating energy is kept separate.
+The response contains daily heat-pump electricity and delivered heat in kWh,
+daily indicative heating COP, gas heating energy in kWh, and an energy-weighted
+COP for the complete selected period. The API's gas kWh differ from the m³ shown
+by the existing gas sensors. Remeha's figures are **estimates**, not independently
+metered values. No entities or Home Assistant statistics are changed.
 
 ## Installation
 This integration needs Home Assistant 2026.10 or newer.

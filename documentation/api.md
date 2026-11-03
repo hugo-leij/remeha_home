@@ -738,23 +738,36 @@ The appliance totals are not always the sum of the producers: the energy consume
 > On a hybrid system where the existing gas boiler heats the hot water, such as the Remeha Elga Ace, Remeha reports no gas for hot water: `energyConsumptionDHW` of the gas boiler stays 0.
 
 #### Historical daily consumption
-The `remeha_home.get_energy_history` action uses the same read-only `daily`
-endpoint, with `startDate` and `endDate` selecting **inclusive local calendar
-days**, even across daylight-saving changes. The action sends
-`<date>T00:00:00.000Z` to `<date>T23:59:59.999Z`, splits requests into
-31-day batches, and allows up to 366 days at a time. A five-day action response
-spanning the October 2026 clock change returned one record for each date.
 
-For completed days, `timeStamp` is the local calendar date at midnight with a
-UTC-looking suffix: it must not be shifted into another date. Missing or
-`isDataReported: false` days are reported separately. The action keeps
-heat-pump electrical consumption and delivered space-heating energy separate
-from the gas boiler's energy (the API reports gas energy in kWh, not m³).
-Incomplete or indistinguishable producer records cannot contribute to a
-reliable total. These are Remeha estimates, not calibrated meter readings.
+The opt-in `remeha_home.get_energy_history` action reuses the read-only
+`/appliances/{id}/energyconsumption/daily` endpoint. The requested
+`startDate` and `endDate` are **inclusive local calendar days**. Requests
+span at most 366 days and are split into 31-day API batches.
 
-The successful five-day test checked the normalized action output, not a
-captured raw historical API response.
+The API's `timeStamp` for a historical record represents a **local calendar
+date**, despite the UTC-looking `Z` suffix. The action therefore returns
+`date` only, never a misleading UTC instant. Dates are not shifted across
+daylight-saving transitions.
+
+The output keeps heat-pump **space-heating** electricity and delivered heating
+energy separate from the gas boiler's space-heating input. Hot water and cooling
+are intentionally out of scope. Daily `heat_pump_heating_cop` is indicative;
+the `period.heat_pump_heating_cop` is computed as the sum of delivered heating
+kWh divided by the sum of electrical heating kWh, **not** by averaging daily COP
+values. The period ratio and totals are returned only if all requested dates and
+the relevant heat-pump values are available. Missing or ambiguous producer
+values remain `null`, not zero.
+
+The API reports gas input energy as **kWh**. Existing Home Assistant gas sensors
+display **m³** after dividing by the appliance's `gasCalorificValue`, so the
+numbers cannot be compared without unit conversion. The action preserves raw
+energy units and does not assume today's calorific value was valid historically.
+
+`missing_dates` includes unreported days and conflicting duplicate records.
+A warning is logged for each conflicting date; the other dates are still
+returned. Public kWh and COP values are rounded to two decimals after
+calculating totals. All figures remain Remeha estimates, not calibrated meter
+readings; the action does not change sensors or statistics.
 
 #### Daily consumption
 - The integration asks for today with local midnight and a `Z` suffix (`<today> 00:00:00.000Z` to `<today> 23:59:59.000Z`), which returns exactly today's item.
