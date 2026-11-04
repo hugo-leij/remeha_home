@@ -230,9 +230,7 @@ def combine_history(start: date, end: date, responses: list[dict]) -> dict:
     complete = days_reported == days_requested
 
     def total(field: str) -> float | None:
-        """Only claim a complete-period total with every daily value present."""
-        if not complete:
-            return None
+        """Sum reported days only; missing values remain unknown, not zero."""
         return _sum_complete([row[field] for row in by_date.values()])
 
     consumed = total("heat_pump_heating_consumed_kwh")

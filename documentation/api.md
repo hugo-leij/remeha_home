@@ -754,9 +754,12 @@ energy separate from the gas boiler's space-heating input. Hot water and cooling
 are intentionally out of scope. Daily `heat_pump_heating_cop` is indicative;
 the `period.heat_pump_heating_cop` is computed as the sum of delivered heating
 kWh divided by the sum of electrical heating kWh, **not** by averaging daily COP
-values. The period ratio and totals are returned only if all requested dates and
-the relevant heat-pump values are available. Missing or ambiguous producer
-values remain `null`, not zero.
+values. The period ratio and totals are computed over **reported days**, even if
+some requested dates are missing. `period.complete`, `days_requested` and
+`days_reported` show the coverage. A period total remains `null` if any
+reported day lacks the corresponding energy value. COP also remains `null` if
+either of its required totals is unavailable or electrical input is zero.
+Missing or ambiguous producer values are never treated as zero.
 
 The API reports gas input energy as **kWh**. Existing Home Assistant gas sensors
 display **m³** after dividing by the appliance's `gasCalorificValue`, so the

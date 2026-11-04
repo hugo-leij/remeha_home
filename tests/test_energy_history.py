@@ -189,7 +189,8 @@ def test_empty_history_and_duplicate_guard() -> None:
     result = combine_history(start, end, [{"data": [_january_9()]}])
     assert result["missing_dates"] == ["2026-01-10"]
     assert len(result["days"]) == 1
-    assert result["period"]["heat_pump_heating_cop"] is None
+    assert result["period"]["complete"] is False
+    assert result["period"]["heat_pump_heating_cop"] == round(68 / 18, 2)
 
     altered = _january_9()
     altered["producerPerformanceStatistics"]["producers"][0]["energyConsumptionCH"] = (
@@ -410,3 +411,84 @@ def test_unmodified_real_consumption_fixture_has_expected_shape() -> None:
     assert row is not None
     assert row["heat_pump_heating_consumed_kwh"] == 4.0
     assert row["gas_heating_consumed_kwh"] == 1.0
+
+
+def test_incomplete_period_totals_use_only_reported_days() -> None:
+    """Available days are useful even when today or tomorrow is missing."""
+    first = _january_9()
+    second = _january_9()
+    second["timeStamp"] = "2026-01-10T00:00:00+00:00"
+
+    result = combine_history(
+        date(2026, 1, 9), date(2026, 1, 11), [{"data": [first, second]}]
+    )
+
+    assert result["missing_dates"] == ["2026-01-11"]
+    assert result["period"]["complete"] is False
+    assert result["period"]["days_requested"] == 3
+    assert result["period"]["days_reported"] == 2
+    assert result["period"]["heat_pump_heating_consumed_kwh"] == 36.0
+    assert result["period"]["heat_pump_heating_delivered_kwh"] == 136.0
+    assert result["period"]["heat_pump_heating_cop"] == round(136 / 36, 2)
+    assert result["period"]["gas_heating_consumed_kwh"] == 4.0
+    assert [d["heat_pump_heating_cop"] for d in result["days"]] == [
+        round(68 / 18, 2),
+        round(68 / 18, 2),
+    ]
+
+
+def test_partial_period_does_not_treat_unknown_energy_as_zero() -> None:
+    """An unknown reported-day input invalidates only the dependent totals."""
+    first = _january_9()
+    second = _january_9()
+    second["timeStamp"] = "2026-01-10T00:00:00+00:00"
+    second["producerPerformanceStatistics"]["producers"][0][
+        "energyConsumptionCH"
+    ] = None
+
+    result = combine_history(
+        date(2026, 1, 9), date(2026, 1, 11), [{"data": [first, second]}]
+    )
+
+    assert result["period"]["complete"] is False
+    assert result["period"]["heat_pump_heating_consumed_kwh"] is None
+    assert result["period"]["heat_pump_heating_delivered_kwh"] == 136.0
+    assert result["period"]["heat_pump_heating_cop"] is None
+    assert result["period"]["gas_heating_consumed_kwh"] == 4.0
+
+
+def test_conflicting_day_keeps_totals_for_other_reported_days() -> None:
+    """Conflicts omit a date, without suppressing clean partial-period totals."""
+    second = _january_9()
+    second["timeStamp"] = "2026-01-10T00:00:00+00:00"
+    altered = copy.deepcopy(second)
+    altered["producerPerformanceStatistics"]["producers"][0][
+        "energyConsumptionCH"
+    ] = 17.0
+
+    result = combine_history(
+        date(2026, 1, 9),
+        date(2026, 1, 10),
+        [{"data": [_january_9(), second, altered]}],
+    )
+
+    assert result["missing_dates"] == ["2026-01-10"]
+    assert result["period"]["complete"] is False
+    assert result["period"]["days_reported"] == 1
+    assert result["period"]["heat_pump_heating_consumed_kwh"] == 18.0
+    assert result["period"]["heat_pump_heating_cop"] == round(68 / 18, 2)
+
+
+def test_period_without_any_reported_days_has_unknown_totals() -> None:
+    """No data is not the same as zero energy."""
+    result = combine_history(
+        date(2026, 1, 9), date(2026, 1, 10), [{"data": []}]
+    )
+
+    assert result["period"]["complete"] is False
+    assert result["period"]["days_requested"] == 2
+    assert result["period"]["days_reported"] == 0
+    assert result["period"]["heat_pump_heating_consumed_kwh"] is None
+    assert result["period"]["heat_pump_heating_delivered_kwh"] is None
+    assert result["period"]["heat_pump_heating_cop"] is None
+    assert result["period"]["gas_heating_consumed_kwh"] is None

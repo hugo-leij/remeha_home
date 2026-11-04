@@ -82,9 +82,10 @@ data:
 
 The response contains daily heat-pump electricity and delivered heat in kWh,
 daily indicative heating COP, gas heating energy in kWh, and an energy-weighted
-COP for the complete selected period. The API's gas kWh differ from the m³ shown
-by the existing gas sensors. Remeha's figures are **estimates**, not independently
-metered values. No entities or Home Assistant statistics are changed.
+COP over reported days. A flag indicates whether the requested period is
+complete. The API's gas kWh differ from the m³ shown by the existing gas
+sensors. Remeha's figures are **estimates**, not independently metered
+values. No entities or Home Assistant statistics are changed.
 
 ## Installation
 This integration needs Home Assistant 2026.10 or newer.
