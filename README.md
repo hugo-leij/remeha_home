@@ -1,4 +1,16 @@
 # Remeha Home integration for Home Assistant
+
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.10%2B-41BDF5?logo=home-assistant&logoColor=white)](https://www.home-assistant.io/)
+[![HACS](https://img.shields.io/badge/HACS-Custom-41BDF5?logo=home-assistant-community-store&logoColor=white)](https://my.home-assistant.io/redirect/hacs_repository/?owner=hugo-leij&repository=remeha_home&category=integration)
+[![Latest release](https://img.shields.io/github/v/release/hugo-leij/remeha_home?label=Release&logo=github)](https://github.com/hugo-leij/remeha_home/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/hugo-leij/remeha_home/remeha_home.zip?label=Downloads&displayAssetName=false&logo=github)](https://github.com/hugo-leij/remeha_home/releases)
+[![Tests](https://img.shields.io/github/actions/workflow/status/hugo-leij/remeha_home/tests.yaml?branch=main&label=Tests&logo=github)](https://github.com/hugo-leij/remeha_home/actions/workflows/tests.yaml)
+[![Validate](https://img.shields.io/github/actions/workflow/status/hugo-leij/remeha_home/validate.yaml?branch=main&label=Validate&logo=github)](https://github.com/hugo-leij/remeha_home/actions/workflows/validate.yaml)
+
+<p align="center">
+  <img src="https://brands.home-assistant.io/remeha_home/logo.png" alt="Remeha Home" width="180">
+</p>
+
 This integration lets you control your Remeha Home thermostats from Home Assistant.
 
 This is a fork of [msvisser/remeha_home](https://github.com/msvisser/remeha_home), which is no longer actively maintained.
