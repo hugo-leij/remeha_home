@@ -65,6 +65,10 @@ You can simply log in using the credentials that you would use in the respective
 
     The energy values come from Remeha and are updated every 15 minutes. Remeha only reports them with a delay of about 2 hours, and right after midnight the values of the new day start at 0.
     On hybrid setups where the existing gas boiler heats the hot water, such as the Remeha Elga Ace, Remeha does not report the gas used for hot water, so that sensor stays at 0.
+    Most of that gas is missing from the Remeha data, and some of it may show up as gas for heating.
+
+    On a hybrid system, the energy consumed by the appliance as a whole is the electricity of the heat pump plus the gas of the gas boiler, both in kWh.
+    For the [Energy dashboard](https://www.home-assistant.io/docs/energy/), use the sensors of the producers instead: the heat pump's energy consumed as electricity, and the gas boiler's gas in m³ as gas.
 
 ### Read-only energy history
 
