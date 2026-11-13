@@ -40,6 +40,7 @@ The entities that the integration creates, per climate zone, hot water zone, app
     - Whether hot water optimization is enabled (binary sensor, diagnostic, if supported by the appliance)
     - Water heater control with modes (Schedule, Comfort, Eco) and target temperature, the same modes as in the Remeha Home app.
     The target temperature is the setpoint of the active activity, Comfort or Eco.
+    A combi boiler has no Eco temperature: in Eco it only stops keeping water warm, and still heats the tap water to the Comfort temperature. So its target temperature is the Comfort temperature in every mode, and setting it changes the Comfort temperature.
     - Setpoint numbers for the Comfort and Eco temperatures. The Eco temperature is only available for a hot water tank: a combi boiler doesn't keep water warm in Eco, so Remeha has no Eco temperature for it.
     - A Boost switch to start and stop boost (if supported by the appliance). Remeha only accepts boost while the zone is in Schedule mode, so the switch gives an error in other modes. Stopping boost returns the zone to Schedule. While boosting, the water heater shows the Boost mode and its `remaining_boost_time` attribute shows how long it still runs.
 - Each appliance (boiler or heat pump) exposes the following sensors:
