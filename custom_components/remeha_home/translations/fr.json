@@ -139,11 +139,11 @@
                 },
                 "start_date": {
                     "name": "Date de début",
-                    "description": "Premier jour calendaire à récupérer (inclus), avant aujourd'hui."
+                    "description": "Premier jour calendaire à récupérer (inclus), au plus tard le dernier jour complet : hier, ou avant 06:00 avant-hier."
                 },
                 "end_date": {
                     "name": "Date de fin",
-                    "description": "Dernier jour calendaire à récupérer (inclus). Aujourd'hui n'est pas encore complet, la période se termine donc au plus tard hier."
+                    "description": "Dernier jour calendaire à récupérer (inclus). Une journée n'est complète qu'à 06:00 le lendemain matin, la période se termine donc au plus tard hier, et avant 06:00 avant-hier."
                 }
             }
         },

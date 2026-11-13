@@ -1,5 +1,7 @@
 """Constants for the Remeha Home integration."""
 
+from datetime import time
+
 from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorDeviceClass,
@@ -18,6 +20,10 @@ from homeassistant.const import (
 )
 
 DOMAIN = "remeha_home"
+
+# Remeha reports energy about 2 hours late, so it keeps adding the last hours of a
+# day after midnight. By this time the next morning the day is complete.
+DAY_COMPLETE_TIME = time(6, 0)
 
 # Personal data in the API responses, redacted in the diagnostics and the debug log.
 # The ids (applianceId, climateZoneId, ...) are kept: they are random, and needed

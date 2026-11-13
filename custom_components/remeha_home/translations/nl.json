@@ -139,11 +139,11 @@
                 },
                 "start_date": {
                     "name": "Begindatum",
-                    "description": "Eerste kalenderdag (inclusief), vóór vandaag."
+                    "description": "Eerste kalenderdag (inclusief), uiterlijk de laatste complete dag: gisteren, of vóór 06:00 eergisteren."
                 },
                 "end_date": {
                     "name": "Einddatum",
-                    "description": "Laatste kalenderdag (inclusief). Vandaag is nog niet compleet, dus de periode eindigt uiterlijk gisteren."
+                    "description": "Laatste kalenderdag (inclusief). Een dag is pas om 06:00 de volgende ochtend compleet, dus de periode eindigt uiterlijk gisteren, en vóór 06:00 eergisteren."
                 }
             }
         },

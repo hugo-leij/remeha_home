@@ -8,7 +8,11 @@ If the heat pump and gas boiler of a hybrid report the same instance number,
 the gas boiler gets a separate device. Existing IDs are kept when possible;
 check sensor names, units and history after updating.
 
-The energy values come from Remeha and are updated every 15 minutes. Remeha only reports them with a delay of about 2 hours, and right after midnight the values of the new day start at 0.
+The energy values come from Remeha and are updated every 15 minutes. Remeha only reports them with a delay of about 2 hours, so it keeps adding the last hours of a day after midnight.
+The sensors therefore show yesterday's values after midnight until yesterday is complete: when Remeha reports the new day and yesterday's values no longer change, usually between 01:00 and 03:30, and at 06:00 at the latest.
+Then the values go to 0 for a minute and show the new day.
+After a restart of Home Assistant between midnight and that moment, the sensors start with the new day without the minute at 0. What Remeha still adds to yesterday is then not counted, and when a value of the new day is already at least 90 % of yesterday's, Home Assistant doesn't see the new day start, and counts too little for that day.
+
 On hybrid setups where the existing gas boiler heats the hot water, such as the Remeha Elga Ace, Remeha does not report the gas used for hot water, so that sensor stays at 0.
 Most of that gas is missing from the Remeha data, and some of it may show up as gas for heating.
 
@@ -29,10 +33,12 @@ data:
   end_date: "2026-01-31"
 ```
 
-Only whole days are returned. Remeha keeps adding to today's figures until
-midnight, so the period ends yesterday at the latest: an `end_date` of today or
-later is shortened to yesterday, and `end_date` in the response shows the last
-day that is included. A period that starts today or later is rejected.
+Only whole days are returned. Remeha keeps adding to a day's figures until the
+early hours of the next morning, so a day is whole from 06:00 the next morning:
+the period ends yesterday at the latest, and before 06:00 the day before
+yesterday. A later `end_date` is shortened to that day, and `end_date` in the
+response shows the last day that is included. A period that starts after it is
+rejected.
 
 The response contains daily heat-pump electricity and delivered heat in kWh,
 daily indicative heating COP, gas heating energy in kWh, and an energy-weighted
