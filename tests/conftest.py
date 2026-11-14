@@ -72,6 +72,8 @@ def mock_api(dashboard) -> MagicMock:
     api.async_get_consumption_data_for_today.return_value = load_fixture(
         "consumption.json"
     )
+    # Asked for yesterday after midnight, also when a test passes midnight by chance
+    api.async_get_consumption_data_for_range.return_value = {"data": []}
     api.async_get_heating_curve.return_value = load_fixture("heating_curve.json")
     api.async_get_activities.return_value = load_fixture("activities.json")
     api.async_get_heating_time_program.return_value = load_fixture(

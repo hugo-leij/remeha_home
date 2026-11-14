@@ -90,7 +90,7 @@ To download them, go to **Settings → Devices & services → Remeha Home**, ope
 The file contains the dashboard as the integration holds it, the technical details of each appliance and the activities of each climate zone.
 The technical details, the activities and the heating curves are the responses of the API, as in the [API documentation](https://github.com/hugo-leij/remeha_home/blob/main/documentation/api.md).
 The dashboard is the API response with three additions:
-- The energy consumption of today of each appliance (`consumptionData`), as the sensors use it: the heating and hot water of a gas boiler in m³ (its total stays in kWh), and `null` values of a heat source replaced by 0.
+- The energy consumption of today of each appliance (`consumptionData`), or after midnight of yesterday until Remeha has completed it, as the sensors use it: the heating and hot water of a gas boiler in m³ (its total stays in kWh), and `null` values of a heat source replaced by 0.
 - The heating curve of each climate zone (`heatingCurve`).
 - The current activity of each hot water zone (`dhwCurrentActivity`).
 

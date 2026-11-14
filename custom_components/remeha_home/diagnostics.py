@@ -17,8 +17,8 @@ async def async_get_config_entry_diagnostics(
     """Return diagnostics for a config entry.
 
     The dashboard is the one the integration holds, with what it adds: per
-    appliance the energy consumption of today as the sensors use it (heating and
-    hot water of a gas boiler in m³, null producer values 0), per climate zone the
+    appliance the energy consumption of the day the sensors show (heating and hot
+    water of a gas boiler in m³, null producer values 0), per climate zone the
     heating curve and per hot water zone the current activity.
     """
     coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]

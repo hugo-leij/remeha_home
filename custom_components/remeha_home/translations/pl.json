@@ -139,11 +139,11 @@
                 },
                 "start_date": {
                     "name": "Data początkowa",
-                    "description": "Pierwszy dzień kalendarzowy do pobrania (włącznie), przed dzisiejszym dniem."
+                    "description": "Pierwszy dzień kalendarzowy do pobrania (włącznie), najpóźniej ostatni kompletny dzień: wczoraj, a przed 06:00 przedwczoraj."
                 },
                 "end_date": {
                     "name": "Data końcowa",
-                    "description": "Ostatni dzień kalendarzowy do pobrania (włącznie). Dzisiejszy dzień nie jest jeszcze kompletny, więc okres kończy się najpóźniej wczoraj."
+                    "description": "Ostatni dzień kalendarzowy do pobrania (włącznie). Dzień jest kompletny dopiero o 06:00 następnego ranka, więc okres kończy się najpóźniej wczoraj, a przed 06:00 przedwczoraj."
                 }
             }
         },
