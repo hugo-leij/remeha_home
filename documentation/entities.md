@@ -28,7 +28,7 @@ The entities that the integration creates, per climate zone, hot water zone, app
     - The end time of a temporary override (unknown when there is none), also as the `override_end_time` attribute of the climate entity
     - Switch to control fireplace mode
     - The heating curve slope and base setpoint (if supported by the appliance), and its maximum flow temperature (diagnostic).
-    They are updated every 15 minutes, so changes made in the Remeha Home app show up.
+    They are updated every 15 minutes, so changes made in the Remeha Home app show up. After a change in Home Assistant, the next update is 15 minutes later, because Remeha can still answer with the old values right after a change.
     - The temperatures of the heating activities used in the clock programs.
     They are updated every 15 minutes, so changes made in the Remeha Home app show up. After a change in Home Assistant, the next update is 15 minutes later, because Remeha can still answer with the old values right after a change.
 - Each hot water zone exposes:

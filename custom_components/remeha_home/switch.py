@@ -298,4 +298,8 @@ class RemehaHomePreHeatSwitch(CoordinatorEntity, SwitchEntity):
             pre_heat["enabled"] = previous
             self.async_write_ha_state()
             raise
+        # The read right after a write can still answer with the old setting. The
+        # coordinator keeps the new one for a while, so the switch doesn't flip back
+        # and a change of another zone doesn't send the old setting back.
+        self.coordinator.set_pre_heat(self.climate_zone_id, enabled)
         await self.coordinator.async_request_refresh()
