@@ -168,7 +168,14 @@ class RemehaHomeWaterHeater(CoordinatorEntity, WaterHeaterEntity):
         return ranges.get("reducedSetpointMax", self._data.get("setPointMax"))
 
     def _current_setpoint_type(self) -> str:
-        """Return the active setpoint type based on the current mode."""
+        """Return the active setpoint type based on the current mode.
+
+        A combi boiler has no eco setpoint: in Eco it only stops keeping water warm,
+        and still heats the tap water to the comfort setpoint. Remeha reports the
+        comfort setpoint as its target setpoint, also in Eco.
+        """
+        if not supports_reduced_setpoint(self._data):
+            return "comfort"
         mode = self._data.get("dhwZoneMode")
         if mode in ("ContinuousComfort", "Boost"):
             return "comfort"
@@ -227,11 +234,6 @@ class RemehaHomeWaterHeater(CoordinatorEntity, WaterHeaterEntity):
             setpoint_key = "comfortSetPoint"
             set_setpoint = self.api.async_set_dhw_comfort_setpoint
         else:
-            if not supports_reduced_setpoint(self._data):
-                raise ServiceValidationError(
-                    translation_domain=DOMAIN,
-                    translation_key="eco_setpoint_requires_tank",
-                )
             setpoint_key = "reducedSetpoint"
             set_setpoint = self.api.async_set_dhw_reduced_setpoint
 
@@ -280,6 +282,11 @@ class RemehaHomeWaterHeater(CoordinatorEntity, WaterHeaterEntity):
 
     def _set_optimistic_target_setpoint(self, target_mode: str) -> None:
         """Update local target setpoint to reflect the selected mode immediately."""
+        if not supports_reduced_setpoint(self._data):
+            # A combi boiler has no eco setpoint: Remeha reports the comfort setpoint
+            # as its target, also in Eco
+            self._data["targetSetpoint"] = self._data.get("comfortSetPoint")
+            return
         if target_mode in ("ContinuousComfort", "Boost"):
             self._data["targetSetpoint"] = self._data.get("comfortSetPoint")
             return
