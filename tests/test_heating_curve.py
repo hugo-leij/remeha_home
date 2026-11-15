@@ -29,6 +29,17 @@ def number(hass: HomeAssistant, key: str):
     return hass.states.get(entity_id(hass, "number", CLIMATE_ZONE_ID, key))
 
 
+async def set_value(hass: HomeAssistant, key: str, value: float) -> None:
+    """Set a heating curve number."""
+    await hass.services.async_call(
+        "number",
+        "set_value",
+        {"entity_id": entity_id(hass, "number", CLIMATE_ZONE_ID, key), "value": value},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+
 async def test_entities(hass: HomeAssistant, config_entry, mock_api) -> None:
     """The heating curve gets numbers and a maximum flow temperature sensor."""
     await setup_integration(hass, config_entry, mock_api)
@@ -116,21 +127,66 @@ async def test_server_error_is_retried(
 async def test_set_value(
     hass: HomeAssistant, config_entry, mock_api, key, value, expected
 ) -> None:
-    """A new value is rounded, sent with the other value, and fetched again."""
+    """A new value is rounded, sent with the other value, and shown at once."""
     await setup_integration(hass, config_entry, mock_api)
-    calls_before = mock_api.async_get_heating_curve.call_count
 
-    await hass.services.async_call(
-        "number",
-        "set_value",
-        {"entity_id": entity_id(hass, "number", CLIMATE_ZONE_ID, key), "value": value},
-        blocking=True,
-    )
-    await hass.async_block_till_done()
+    await set_value(hass, key, value)
 
     mock_api.async_set_heating_curve.assert_called_once_with(CLIMATE_ZONE_ID, *expected)
-    assert mock_api.async_get_heating_curve.call_count == calls_before + 1
-    assert number(hass, SLOPE).state != STATE_UNAVAILABLE
+    assert number(hass, SLOPE).state == str(expected[0])
+    assert number(hass, BASE_SETPOINT).state == str(expected[1])
+
+
+async def test_written_curve_is_kept(
+    hass: HomeAssistant, config_entry, mock_api, freezer
+) -> None:
+    """A change is built from what was written before, not from a read that lags behind.
+
+    The read right after a write can answer with the values from before it; a change
+    built from that read sends the old value back for the parameter it did not change.
+    """
+    await setup_integration(hass, config_entry, mock_api)
+    # Every later read answers with the heating curve from before any change
+    mock_api.async_get_heating_curve.side_effect = lambda _zone: load_fixture(
+        "heating_curve.json"
+    )
+    reads = mock_api.async_get_heating_curve.await_count
+
+    await set_value(hass, SLOPE, 1.2)
+    await refresh(hass, config_entry)
+    assert mock_api.async_get_heating_curve.await_count == reads
+    assert number(hass, SLOPE).state == "1.2"
+
+    freezer.tick(timedelta(minutes=5))
+    await set_value(hass, BASE_SETPOINT, 20.5)
+    await refresh(hass, config_entry)
+    assert mock_api.async_set_heating_curve.await_args_list[-1].args == (
+        CLIMATE_ZONE_ID,
+        1.2,
+        20.5,
+    )
+    assert mock_api.async_get_heating_curve.await_count == reads
+    assert number(hass, SLOPE).state == "1.2"
+    assert number(hass, BASE_SETPOINT).state == "20.5"
+
+    # 15 minutes after the last change the heating curve is read again
+    mock_api.async_get_heating_curve.side_effect = lambda _zone: {
+        **load_fixture("heating_curve.json"),
+        "slope": 1.2,
+        "baseSetpoint": 20.5,
+        "maxFlowTemperature": 30.0,
+    }
+    freezer.tick(timedelta(minutes=14))
+    await refresh(hass, config_entry)
+    assert mock_api.async_get_heating_curve.await_count == reads
+
+    freezer.tick(timedelta(minutes=1))
+    await refresh(hass, config_entry)
+    assert mock_api.async_get_heating_curve.await_count == reads + 1
+    assert number(hass, SLOPE).state == "1.2"
+    assert number(hass, BASE_SETPOINT).state == "20.5"
+    max_flow = hass.states.get(entity_id(hass, "sensor", CLIMATE_ZONE_ID, MAX_FLOW))
+    assert max_flow.state == "30.0"
 
 
 @pytest.mark.parametrize(

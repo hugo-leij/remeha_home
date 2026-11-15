@@ -27,6 +27,14 @@ _LOGGER = logging.getLogger(__name__)
 
 MAX_FAILED_UPDATES = 3
 
+# How long a pre-heat setting written from Home Assistant wins over the dashboard.
+# The read right after a write can still answer with the setting from before it, and
+# a change of another zone of the appliance, which sends every zone, would send that
+# old setting back. This covers the read right after the write and the update a
+# minute later. After it the dashboard wins, so a setting the appliance didn't take
+# doesn't show for long.
+PRE_HEAT_SETTLE_TIME = timedelta(minutes=2)
+
 PRODUCER_TYPE_NAMES = {
     "HeatPumpAirSource": "Heat Pump (Air Source)",
     "HeatPumpGroundSource": "Heat Pump (Ground Source)",
@@ -99,6 +107,9 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
         # The switching points of the active clock program of each zone
         self.time_program_data: dict[str, dict] = {}
         self.time_program_last_update: dict[str, datetime] = {}
+        # The pre-heat settings written from Home Assistant that the dashboard doesn't
+        # report yet, with the time of the write, see _keep_written_pre_heat
+        self.pre_heat_written: dict[str, tuple[bool, datetime]] = {}
         # Failed updates in a row, see _async_update_data
         self.failed_updates = 0
 
@@ -277,6 +288,7 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
                 climate_zone["heatingCurve"] = self.heating_curve_data.get(
                     climate_zone_id, {}
                 )
+                self._keep_written_pre_heat(climate_zone, now)
                 self.items[climate_zone_id] = climate_zone
 
                 await self._async_update_activities(climate_zone_id, now)
@@ -328,7 +340,12 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
     async def _async_update_heating_curve(
         self, climate_zone_id: str, now: datetime
     ) -> None:
-        """Request the heating curve of a climate zone every 15 minutes."""
+        """Request the heating curve of a climate zone every 15 minutes.
+
+        A write from Home Assistant counts as an update (see set_heating_curve): like
+        for the activities, the read right after a write can answer with the values
+        from before it.
+        """
         if climate_zone_id in self.heating_curve_unsupported:
             return
 
@@ -468,9 +485,55 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
         self.activities_data[climate_zone_id] = activities
         self.activities_last_update[climate_zone_id] = now or datetime.now()
 
-    def invalidate_heating_curve(self, climate_zone_id: str) -> None:
-        """Request the heating curve of a climate zone again on the next update."""
-        self.heating_curve_last_update.pop(climate_zone_id, None)
+    def set_heating_curve(
+        self,
+        climate_zone_id: str,
+        slope: float,
+        base_setpoint: float,
+        now: datetime | None = None,
+    ) -> None:
+        """Store the slope and base setpoint just written for a climate zone.
+
+        The stored heating curve is changed in place: the climate zone in the
+        dashboard holds the same dict in its heatingCurve.
+        """
+        self.heating_curve_data.setdefault(climate_zone_id, {}).update(
+            slope=slope, baseSetpoint=base_setpoint
+        )
+        self.heating_curve_last_update[climate_zone_id] = now or datetime.now()
+
+    def set_pre_heat(
+        self, climate_zone_id: str, enabled: bool, now: datetime | None = None
+    ) -> None:
+        """Remember a pre-heat setting just written, see _keep_written_pre_heat."""
+        self.pre_heat_written[climate_zone_id] = (enabled, now or datetime.now())
+
+    def _keep_written_pre_heat(self, climate_zone: dict, now: datetime) -> None:
+        """Keep a pre-heat setting just written while the dashboard reports the old one.
+
+        The setting is kept for PRE_HEAT_SETTLE_TIME at most. It is forgotten as soon
+        as the dashboard reports it, so a later change in the Remeha Home app shows.
+        """
+        climate_zone_id = climate_zone["climateZoneId"]
+        written = self.pre_heat_written.get(climate_zone_id)
+        if written is None:
+            return
+        enabled, written_at = written
+        pre_heat = climate_zone.get("preHeat") or {}
+        reported = pre_heat.get("enabled")
+        # The write can be newer than now: it can land while this update waits for the
+        # requests after the dashboard, and then this dashboard is from before it
+        settling = now - written_at < PRE_HEAT_SETTLE_TIME
+        if reported == enabled or not settling:
+            del self.pre_heat_written[climate_zone_id]
+        elif isinstance(reported, bool):
+            _LOGGER.debug(
+                "Pre-heat of climate zone %s is still reported as %s, keeping %s",
+                climate_zone_id,
+                reported,
+                enabled,
+            )
+            pre_heat["enabled"] = enabled
 
     def _update_producers(
         self, appliance_id: str, appliance_device_id: str, producers: list[dict]

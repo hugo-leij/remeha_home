@@ -315,8 +315,12 @@ class RemehaHomeHeatingCurveNumber(CoordinatorEntity, NumberEntity):
             self.climate_zone_id, slope, base_setpoint
         )
 
-        self.coordinator.invalidate_heating_curve(self.climate_zone_id)
-        await self.coordinator.async_request_refresh()
+        # Keep what was just written rather than reading the heating curve again: the
+        # read right after a write can answer with the values from before it, and the
+        # next change, which sends both values, would send the old one back. The next
+        # read is 15 minutes later.
+        self.coordinator.set_heating_curve(self.climate_zone_id, slope, base_setpoint)
+        self.coordinator.async_update_listeners()
 
 
 class RemehaHomeActivityNumber(CoordinatorEntity, NumberEntity):
