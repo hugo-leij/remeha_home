@@ -429,6 +429,18 @@ class RemehaHomeClimateEntity(CoordinatorEntity, ClimateEntity):
 
         await self._async_refresh_soon()
 
+    async def async_turn_on(self) -> None:
+        """Turn the zone on: a zone that is off follows its clock program again.
+
+        Auto is the zone's normal mode. Heat (or heat/cool) is the manual mode, which
+        needs a setpoint of its own, and off is frost protection. Home Assistant would
+        select heat (or heat/cool) with the setpoint the zone has, also when the zone
+        is already on, and in frost protection that is the frost protection setpoint.
+        A zone that is on keeps its mode, and so does a zone in a mode that isn't known.
+        """
+        if self.hvac_mode == HVACMode.OFF:
+            await self.async_set_hvac_mode(HVACMode.AUTO)
+
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set new preset mode."""
         _LOGGER.debug("Setting preset mode to %s", preset_mode)

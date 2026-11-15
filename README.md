@@ -24,7 +24,7 @@ There have been reports by users that this integration will also work for Baxi, 
 You can simply log in using the credentials that you would use in the respective apps.
 
 ## Features
-- **Thermostat** per climate zone, with the modes auto (follow the clock program), heat (heat/cool on a zone that can cool) and off, and presets for the three clock programs, Manual and Frost protection.
+- **Thermostat** per climate zone, with the modes auto (follow the clock program), heat (heat/cool on a zone that can cool) and off, and presets for the three clock programs, Manual and Frost protection. Turning on a zone that is off selects auto.
 - **Temporary temperature**: hold another temperature for a while, after which the zone returns to its clock program by itself. See [Temporary temperature](#temporary-temperature).
 - **Clock program schedules**: the week schedule of the active heating and hot water program, for dashboards and automations. See [Clock program schedules](#clock-program-schedules).
 - **Hot water**: a water heater with the Schedule, Comfort and Eco modes, the Comfort and Eco temperatures, and Boost.

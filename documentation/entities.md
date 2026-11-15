@@ -11,6 +11,8 @@ The entities that the integration creates, per climate zone, hot water zone, app
         A zone can cool when it reports so (`capabilityCooling`) or has Cooling activities; any other zone shows Heat.
         - Off mode: the thermostat is set to frost protection.
         A temperature can't be set in this mode: change the mode first, or pass `hvac_mode` together with the temperature in `climate.set_temperature`.
+        Turning the thermostat on (`climate.turn_on`, or turn on by voice) sets it to auto mode, so the zone follows its clock program again.
+        A zone that is already on keeps its mode. Turning it off (`climate.turn_off`) sets it to off mode.
     - Presets for the three clock programs available in the Remeha Home app (Schedule 1 to 3), and for Manual and Frost protection.
     When a clock program is selected, the integration will automatically switch the climate zone to auto mode to make sure the preset is applied.
     Manual is the same as heat (or heat/cool) mode, with the current target temperature, and Frost protection is the same as off mode.
