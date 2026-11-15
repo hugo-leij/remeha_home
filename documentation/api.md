@@ -866,9 +866,10 @@ readings; the action does not change sensors or statistics.
   Measured on an Elga Ace hybrid from 2026-11-03 to 12, the figures just before midnight missed energy on 4 of the 10 days (in total 3 of 119 kWh heat-pump electricity, 13 of 467 kWh heat and about 4 of 124 kWh gas, at most 6 kWh heat on one day), each time when the next day's item was only reported after about 02:00; when it was reported at about 01:00, the day was already complete.
   So Remeha seems to report the energy in order: once today's item has `isDataReported: true`, yesterday's item is complete.
   After midnight the integration therefore also asks for yesterday, with the dates of the [historical daily consumption](#historical-daily-consumption), and keeps showing yesterday's figures until today's item has `isDataReported: true` and yesterday's figures stay the same for 15 minutes, or until 06:00.
-- In the first hour after midnight, that request for yesterday can return the new day instead: its `timeStamp` is the time of its latest data in UTC, which still has yesterday's date.
+- Right after midnight, that request for yesterday can return the new day instead: its `timeStamp` is the time of its latest data in UTC, which has yesterday's date until its latest data is from 00:00 UTC (01:00 CET, 02:00 CEST) or later.
   Measured on 2026-11-15: at 00:18 the request for 14 November returned 14 November at `2026-11-14T22:00:00+00:00` (23:00 CET), from 00:33 to 01:03 the new day at `2026-11-14T23:00:00+00:00` (00:00 CET) with all figures 0 and `isDataReported: true`, and at 01:33 the complete 14 November at `2026-11-14T00:00:00+00:00`.
-  The integration therefore reads the date of a running day in local time, and takes figures lower than the ones it shows as missing: the energy of a day only goes up.
+  So the new day's zeros can also come with `isDataReported: true`.
+  The integration therefore reads the date of a running day in local time, and takes figures lower than the ones it shows, or a heat source that is missing, as missing: the energy of a day only goes up.
 
 <details>
 <summary>Example response of a hybrid heat pump with a gas boiler</summary>

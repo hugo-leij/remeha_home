@@ -84,7 +84,8 @@ def has_lower_energy(consumption: dict, previous: dict) -> bool:
     """Return whether an energy figure is lower than in the previous consumption.
 
     The energy of a day only goes up, so lower figures belong to another day. The
-    producers are compared by heat source; one missing from either side is skipped.
+    producers are compared by heat source. A producer that had energy and is missing
+    counts as lower: its sensors would go to 0.
     """
 
     def figures(data: dict) -> dict:
@@ -100,12 +101,17 @@ def has_lower_energy(consumption: dict, previous: dict) -> bool:
         return result
 
     before = figures(previous)
-    return any(
-        isinstance(value, int | float)
-        and isinstance(before.get(key), int | float)
-        and value < before[key]
-        for key, value in figures(consumption).items()
-    )
+    after = figures(consumption)
+
+    def is_lower(key, value) -> bool:
+        if not isinstance(value, int | float):
+            return False
+        if key not in after:
+            # Only a producer can be missing
+            return value > 0
+        return isinstance(after[key], int | float) and after[key] < value
+
+    return any(is_lower(key, value) for key, value in before.items())
 
 
 def get_consumption_day(item: dict) -> date | None:
@@ -428,6 +434,17 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
             consumption = self._process_consumption_data(
                 appliance, consumption_data["data"][0]
             )
+            if shown_day == today and has_lower_energy(
+                consumption, self.appliance_consumption_data[appliance_id]
+            ):
+                # Not today's figures: a drop would be seen as a reset and count
+                # the day twice, for example right after midnight when the process
+                # runs in another time zone than Home Assistant
+                _LOGGER.debug(
+                    "Consumption data for appliance %s is lower than before, keeping today's values",
+                    appliance_id,
+                )
+                consumption = self.appliance_consumption_data[appliance_id]
             self.appliance_consumption_data_date[appliance_id] = today
         elif shown_day == today:
             # Empty response during the day: keep today's values, a drop to 0
@@ -464,7 +481,8 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
         )
         for item in consumption_data["data"]:
             # An item without figures counts as missing: its zeros would be a reset,
-            # and the day's figures after it would be counted twice
+            # and the day's figures after it would be counted twice. Zeros can also
+            # come with isDataReported true; has_lower_energy catches those.
             if item.get("isDataReported") is False:
                 continue
             # Right after midnight the item of the new day can carry yesterday's date

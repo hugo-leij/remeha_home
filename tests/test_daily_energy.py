@@ -164,9 +164,8 @@ async def test_new_day_with_the_date_of_yesterday_is_not_yesterday(
     await start(hass, config_entry, mock_api)
     assert figures(hass) == (7.0, 9.0)
 
-    new_day = reported(YESTERDAY, 0.0, 0.0, f"{YESTERDAY}T23:00:00+00:00")
-    responses["today"] = new_day
-    responses["range"] = new_day
+    responses["today"] = EMPTY
+    responses["range"] = reported(YESTERDAY, 0.0, 0.0, f"{YESTERDAY}T23:00:00+00:00")
     await update_at(hass, config_entry, freezer, f"{TODAY} 00:33:00")
     assert figures(hass) == (7.0, 9.0)
     await update_at(hass, config_entry, freezer, f"{TODAY} 00:48:00")
@@ -176,6 +175,21 @@ async def test_new_day_with_the_date_of_yesterday_is_not_yesterday(
     responses["range"] = reported(YESTERDAY, 7.0, 9.5)
     await update_at(hass, config_entry, freezer, f"{TODAY} 01:33:00")
     assert figures(hass) == (7.0, 9.5)
+
+
+async def test_new_day_is_left_out_by_its_date(
+    hass: HomeAssistant, config_entry, mock_api, responses, freezer
+) -> None:
+    """The item of the new day is left out by its date, not only by its figures."""
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to(f"{YESTERDAY} 23:50:00")
+    responses["today"] = reported(YESTERDAY, 7.0, 9.0, f"{YESTERDAY}T22:00:00+00:00")
+    await start(hass, config_entry, mock_api)
+
+    responses["today"] = EMPTY
+    responses["range"] = reported(YESTERDAY, 8.0, 10.0, f"{YESTERDAY}T23:00:00+00:00")
+    await update_at(hass, config_entry, freezer, f"{TODAY} 00:33:00")
+    assert figures(hass) == (7.0, 9.0)
 
 
 async def test_lower_figures_of_yesterday_are_not_shown(
@@ -199,6 +213,44 @@ async def test_lower_figures_of_yesterday_are_not_shown(
     responses["range"] = reported(YESTERDAY, 11.0, 12.5)
     await update_at(hass, config_entry, freezer, f"{TODAY} 01:05:00")
     assert figures(hass) == (11.0, 12.5)
+
+
+async def test_missing_producer_of_yesterday_is_not_shown(
+    hass: HomeAssistant, config_entry, mock_api, responses, freezer
+) -> None:
+    """A producer missing from the response would go to 0, so the values are kept."""
+    freezer.move_to(f"{YESTERDAY} 23:50:00")
+    responses["today"] = reported(YESTERDAY, 10.0, 12.0)
+    await start(hass, config_entry, mock_api)
+
+    without_boiler = reported(YESTERDAY, 11.0, 13.5)
+    producers = without_boiler["data"][0]["producerPerformanceStatistics"]["producers"]
+    del producers[1]
+    responses["today"] = EMPTY
+    responses["range"] = without_boiler
+    await update_at(hass, config_entry, freezer, f"{TODAY} 00:35:00")
+    assert figures(hass) == (10.0, 12.0)
+
+    responses["range"] = reported(YESTERDAY, 11.0, 13.5)
+    await update_at(hass, config_entry, freezer, f"{TODAY} 00:50:00")
+    assert figures(hass) == (11.0, 13.5)
+
+
+async def test_lower_figures_of_today_are_not_shown(
+    hass: HomeAssistant, config_entry, mock_api, responses, freezer
+) -> None:
+    """Today's figures only go up as well.
+
+    When the process runs in another time zone than Home Assistant, the request for
+    today can return the new day before the coordinator's midnight.
+    """
+    freezer.move_to(f"{YESTERDAY} 23:30:00")
+    responses["today"] = reported(YESTERDAY, 7.0, 9.0)
+    await start(hass, config_entry, mock_api)
+
+    responses["today"] = reported(YESTERDAY, 0.0, 0.0, f"{YESTERDAY}T23:00:00+00:00")
+    await update_at(hass, config_entry, freezer, f"{YESTERDAY} 23:46:00")
+    assert figures(hass) == (7.0, 9.0)
 
 
 @pytest.mark.parametrize(
