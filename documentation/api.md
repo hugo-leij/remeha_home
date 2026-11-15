@@ -97,7 +97,7 @@ The available fields differ per appliance. The most important ones:
 | `dhwZoneMode` | `Scheduling`, `ContinuousComfort`, `Off` or `Boost`, see [hot water zones](#hot-water-zones) |
 | `dhwStatus` | e.g. `Idle`, `RequestingHeat`, `ProducingHeat` or `LowTemperature` |
 | `dhwTemperature` | Water temperature, `null` for a combi boiler |
-| `comfortSetPoint`, `reducedSetpoint`, `targetSetpoint` | The Comfort and Eco setpoints, and the setpoint that applies now |
+| `comfortSetPoint`, `reducedSetpoint`, `targetSetpoint` | The Comfort and Eco setpoints, and the setpoint that applies now. On a combi boiler `targetSetpoint` is the Comfort setpoint, also in Eco (`Off`) |
 | `setPointRanges` | Minimum and maximum of the Comfort and Eco setpoints |
 | `nextSwitchTime`, `nextSwitchActivity` | When the clock program switches next (local time), and to which activity: `Comfort` or `Reduced` (Eco in the app) |
 | `activeDwhTimeProgramNumber` | The active clock program of the hot water zone, `1` on the measured systems |
