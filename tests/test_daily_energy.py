@@ -30,15 +30,18 @@ TODAY = "2026-11-11"
 EMPTY = {"data": []}
 
 
-def reported(day: str, heat_pump: float, total: float) -> dict:
+def reported(
+    day: str, heat_pump: float, total: float, timestamp: str | None = None
+) -> dict:
     """Return a response with the figures of a day.
 
     heat_pump is the electricity of the heat pump for heating, total the heating
-    energy of the appliance.
+    energy of the appliance. The timeStamp is that of a complete day, the day at
+    00:00 UTC, unless another is given.
     """
     response = load_fixture("consumption.json")
     item = response["data"][0]
-    item["timeStamp"] = f"{day}T00:00:00+00:00"
+    item["timeStamp"] = timestamp or f"{day}T00:00:00+00:00"
     item["heatingEnergyConsumed"] = total
     item["producerPerformanceStatistics"]["producers"][0]["energyConsumptionCH"] = (
         heat_pump
@@ -143,6 +146,79 @@ async def test_after_midnight_the_sensors_show_yesterday(
     await update_at(hass, config_entry, freezer, f"{TODAY} 00:50:00")
     assert figures(hass) == (11.5, 14.0)
     assert mock_api.async_get_consumption_data_for_range.await_count == 4
+
+
+async def test_new_day_with_the_date_of_yesterday_is_not_yesterday(
+    hass: HomeAssistant, config_entry, mock_api, responses, freezer
+) -> None:
+    """Right after midnight the item of the new day can carry yesterday's date.
+
+    The timeStamp of a day still running is the time of its latest data in UTC, so
+    23:00 UTC is 00:00 the next day in CET. Measured on 2026-11-15: from 00:33 to
+    01:03 the request for 14 November returned the new day, all 0 with
+    isDataReported: true, at 23:00 UTC on 14 November.
+    """
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    freezer.move_to(f"{YESTERDAY} 23:50:00")
+    responses["today"] = reported(YESTERDAY, 7.0, 9.0, f"{YESTERDAY}T22:00:00+00:00")
+    await start(hass, config_entry, mock_api)
+    assert figures(hass) == (7.0, 9.0)
+
+    new_day = reported(YESTERDAY, 0.0, 0.0, f"{YESTERDAY}T23:00:00+00:00")
+    responses["today"] = new_day
+    responses["range"] = new_day
+    await update_at(hass, config_entry, freezer, f"{TODAY} 00:33:00")
+    assert figures(hass) == (7.0, 9.0)
+    await update_at(hass, config_entry, freezer, f"{TODAY} 00:48:00")
+    assert figures(hass) == (7.0, 9.0)
+
+    # Yesterday complete: its date at 00:00 UTC
+    responses["range"] = reported(YESTERDAY, 7.0, 9.5)
+    await update_at(hass, config_entry, freezer, f"{TODAY} 01:33:00")
+    assert figures(hass) == (7.0, 9.5)
+
+
+async def test_lower_figures_of_yesterday_are_not_shown(
+    hass: HomeAssistant, config_entry, mock_api, responses, freezer
+) -> None:
+    """The energy of a day only goes up, so lower figures are not yesterday's."""
+    freezer.move_to(f"{YESTERDAY} 23:50:00")
+    responses["today"] = reported(YESTERDAY, 10.0, 12.0)
+    await start(hass, config_entry, mock_api)
+
+    responses["today"] = EMPTY
+    responses["range"] = reported(YESTERDAY, 0.0, 0.0)
+    await update_at(hass, config_entry, freezer, f"{TODAY} 00:35:00")
+    assert figures(hass) == (10.0, 12.0)
+
+    # One figure lower is enough
+    responses["range"] = reported(YESTERDAY, 11.0, 11.5)
+    await update_at(hass, config_entry, freezer, f"{TODAY} 00:50:00")
+    assert figures(hass) == (10.0, 12.0)
+
+    responses["range"] = reported(YESTERDAY, 11.0, 12.5)
+    await update_at(hass, config_entry, freezer, f"{TODAY} 01:05:00")
+    assert figures(hass) == (11.0, 12.5)
+
+
+@pytest.mark.parametrize(
+    ("timestamp", "day"),
+    [
+        ("2026-11-14T00:00:00+00:00", date(2026, 11, 14)),
+        ("2026-11-14T22:00:00+00:00", date(2026, 11, 14)),
+        ("2026-11-14T23:00:00+00:00", date(2026, 11, 15)),
+        ("2026-07-14T21:00:00+00:00", date(2026, 7, 14)),
+        ("2026-07-14T22:00:00+00:00", date(2026, 7, 15)),
+        (None, None),
+        ("not a time", None),
+    ],
+)
+async def test_consumption_day(hass: HomeAssistant, timestamp, day) -> None:
+    """A complete day has its date, a running day its latest data in UTC."""
+    from custom_components.remeha_home.coordinator import get_consumption_day
+
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    assert get_consumption_day({"timeStamp": timestamp}) == day
 
 
 async def test_new_day_once_today_is_reported_and_yesterday_is_complete(

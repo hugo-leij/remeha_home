@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Awaitable, Callable
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 import logging
 
 from aiohttp.client_exceptions import ClientError, ClientResponseError
@@ -16,6 +16,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.redact import async_redact_data
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 from homeassistant.exceptions import ConfigEntryAuthFailed
 
 from .api import RemehaHomeAPI
@@ -77,6 +78,54 @@ def get_energy_figures(consumption: dict) -> list:
             for producer in get_producers(consumption)
         ),
     ]
+
+
+def has_lower_energy(consumption: dict, previous: dict) -> bool:
+    """Return whether an energy figure is lower than in the previous consumption.
+
+    The energy of a day only goes up, so lower figures belong to another day. The
+    producers are compared by heat source; one missing from either side is skipped.
+    """
+
+    def figures(data: dict) -> dict:
+        result = {key: data.get(key) for key in APPLIANCE_CONSUMPTION_DEFAULT_DATA}
+        for producer in get_producers(data):
+            source = (
+                producer.get("instanceWithinDevice"),
+                producer.get("producerType"),
+                producer.get("energyType"),
+            )
+            for stat in PRODUCER_STATS:
+                result[(*source, stat)] = producer.get(stat)
+        return result
+
+    before = figures(previous)
+    return any(
+        isinstance(value, int | float)
+        and isinstance(before.get(key), int | float)
+        and value < before[key]
+        for key, value in figures(consumption).items()
+    )
+
+
+def get_consumption_day(item: dict) -> date | None:
+    """Return the day an item of the daily energy consumption belongs to.
+
+    The timeStamp of a complete day is its date at 00:00 UTC. That of a day still
+    running is the time of its latest data in UTC, so in the first hour after
+    midnight the new day can carry yesterday's date: 23:00 UTC is 00:00 CET. Read
+    in local time, that is the new day.
+    """
+    timestamp = item.get("timeStamp")
+    if not isinstance(timestamp, str):
+        return None
+    try:
+        moment = datetime.fromisoformat(timestamp)
+    except ValueError:
+        return None
+    if moment.tzinfo is None or moment.time() == time(0):
+        return moment.date()
+    return dt_util.as_local(moment).date()
 
 
 def is_reported(consumption_data: dict) -> bool:
@@ -348,6 +397,15 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
             consumption = await self._async_get_consumption_of_day(
                 appliance, yesterday
             )
+            if consumption is not None and has_lower_energy(consumption, previous):
+                # A safety net: lower figures are not yesterday's, and showing them
+                # would count yesterday twice
+                _LOGGER.debug(
+                    "Consumption data of %s for appliance %s is lower than before",
+                    yesterday,
+                    appliance_id,
+                )
+                consumption = None
             if consumption is None:
                 _LOGGER.debug(
                     "No consumption data of %s found for appliance %s, keeping its values",
@@ -409,8 +467,8 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
             # and the day's figures after it would be counted twice
             if item.get("isDataReported") is False:
                 continue
-            # The timeStamp of an earlier day is its date at 00:00
-            if str(item.get("timeStamp")).startswith(day.isoformat()):
+            # Right after midnight the item of the new day can carry yesterday's date
+            if get_consumption_day(item) == day:
                 return self._process_consumption_data(appliance, item)
         return None
 
