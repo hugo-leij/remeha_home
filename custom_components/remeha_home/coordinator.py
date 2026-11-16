@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Awaitable, Callable
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 import logging
 
 from aiohttp.client_exceptions import ClientError, ClientResponseError
@@ -16,13 +16,12 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.redact import async_redact_data
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-from homeassistant.util import dt as dt_util
 from homeassistant.exceptions import ConfigEntryAuthFailed
 
 from .api import RemehaHomeAPI
 from .const import DAY_COMPLETE_TIME, DOMAIN, TO_REDACT
 from .producer_ids import ProducerIdResolver, is_valid_producer
-from .util import detect_dhw_setpoint_activity
+from .util import detect_dhw_setpoint_activity, get_consumption_day
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -120,26 +119,6 @@ def has_lower_energy(consumption: dict, previous: dict) -> bool:
         return isinstance(after[key], int | float) and after[key] < value
 
     return any(is_lower(key, value) for key, value in before.items())
-
-
-def get_consumption_day(item: dict) -> date | None:
-    """Return the day an item of the daily energy consumption belongs to.
-
-    The timeStamp of a complete day is its date at 00:00 UTC. That of a day still
-    running is the time of its latest data in UTC, so in the first hour after
-    midnight the new day can carry yesterday's date: 23:00 UTC is 00:00 CET. Read
-    in local time, that is the new day.
-    """
-    timestamp = item.get("timeStamp")
-    if not isinstance(timestamp, str):
-        return None
-    try:
-        moment = datetime.fromisoformat(timestamp)
-    except ValueError:
-        return None
-    if moment.tzinfo is None or moment.time() == time(0):
-        return moment.date()
-    return dt_util.as_local(moment).date()
 
 
 def is_reported(consumption_data: dict) -> bool:

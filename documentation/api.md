@@ -827,7 +827,10 @@ a period that starts after it.
 The API's `timeStamp` for a historical record represents a **local calendar
 date**, despite the UTC-looking `Z` suffix. The action therefore returns
 `date` only, never a misleading UTC instant. Dates are not shifted across
-daylight-saving transitions.
+daylight-saving transitions. Only the item of a day that is still running has
+the time of its latest data in UTC (see [Daily consumption](#daily-consumption)):
+the action reads its date in local time, like the energy sensors, so right after
+midnight the new day is not taken for yesterday.
 
 The output keeps heat-pump **space-heating** electricity and delivered heating
 energy separate from the gas boiler's space-heating input. The appliance totals

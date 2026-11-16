@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, time
 
 import homeassistant.util.dt as dt_util
 
@@ -91,3 +91,23 @@ def remeha_utc_time(value: str | None) -> datetime | None:
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=dt_util.UTC)
     return parsed
+
+
+def get_consumption_day(item: dict) -> date | None:
+    """Return the day an item of the daily energy consumption belongs to.
+
+    The timeStamp of a complete day is its date at 00:00 UTC. That of a day still
+    running is the time of its latest data in UTC, so in the first hour after
+    midnight the new day can carry yesterday's date: 23:00 UTC is 00:00 CET. Read
+    in local time, that is the new day.
+    """
+    timestamp = item.get("timeStamp")
+    if not isinstance(timestamp, str):
+        return None
+    try:
+        moment = datetime.fromisoformat(timestamp)
+    except ValueError:
+        return None
+    if moment.tzinfo is None or moment.time() == time(0):
+        return moment.date()
+    return dt_util.as_local(moment).date()

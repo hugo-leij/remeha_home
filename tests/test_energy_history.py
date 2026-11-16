@@ -458,6 +458,35 @@ def test_partial_period_does_not_treat_unknown_energy_as_zero() -> None:
     assert result["period"]["gas_heating_consumed_kwh"] == 4.0
 
 
+async def test_new_day_with_the_date_of_yesterday_is_not_a_conflict(
+    hass: HomeAssistant,
+) -> None:
+    """Right after midnight the new day can carry yesterday's date in UTC.
+
+    Its timeStamp is the time of its latest data: 23:00 UTC is 00:00 CET on the new
+    day. Read as yesterday, it would conflict with yesterday's record and report
+    yesterday as missing.
+    """
+    await hass.config.async_set_time_zone("Europe/Amsterdam")
+    yesterday = _january_9()
+    new_day = _january_9()
+    new_day["timeStamp"] = "2026-01-09T23:00:00+00:00"
+    for producer in new_day["producerPerformanceStatistics"]["producers"]:
+        for key in ("energyConsumptionCH", "energyProductionCH"):
+            if key in producer:
+                producer[key] = 0.0
+
+    assert normalize_history_day(new_day)["date"] == "2026-01-10"
+    result = combine_history(
+        date(2026, 1, 9), date(2026, 1, 9), [{"data": [yesterday, new_day]}]
+    )
+
+    assert result["missing_dates"] == []
+    assert result["period"]["complete"] is True
+    assert result["period"]["heat_pump_heating_consumed_kwh"] == 18.0
+    assert result["period"]["heat_pump_heating_delivered_kwh"] == 68.0
+
+
 def test_conflicting_day_keeps_totals_for_other_reported_days() -> None:
     """Conflicts omit a date, without suppressing clean partial-period totals."""
     second = _january_9()

@@ -267,7 +267,7 @@ async def test_lower_figures_of_today_are_not_shown(
 )
 async def test_consumption_day(hass: HomeAssistant, timestamp, day) -> None:
     """A complete day has its date, a running day its latest data in UTC."""
-    from custom_components.remeha_home.coordinator import get_consumption_day
+    from custom_components.remeha_home.util import get_consumption_day
 
     await hass.config.async_set_time_zone("Europe/Amsterdam")
     assert get_consumption_day({"timeStamp": timestamp}) == day
