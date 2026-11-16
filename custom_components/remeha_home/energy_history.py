@@ -13,6 +13,7 @@ import math
 import logging
 
 from .producer_ids import is_valid_producer
+from .util import get_consumption_day
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -74,12 +75,9 @@ def normalize_history_day(item: dict) -> dict | None:
     """Return a JSON-safe day with per-producer and heat-pump-only metrics."""
     if not isinstance(item, dict) or item.get("isDataReported") is False:
         return None
-    timestamp = item.get("timeStamp")
-    if not isinstance(timestamp, str):
-        return None
-    try:
-        day = date.fromisoformat(timestamp[:10])
-    except ValueError:
+    # The timeStamp of a day still running can carry the date of the day before
+    day = get_consumption_day(item)
+    if day is None:
         return None
 
     statistics = item.get("producerPerformanceStatistics")
