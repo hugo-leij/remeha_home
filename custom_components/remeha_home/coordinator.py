@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Awaitable, Callable
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 import logging
 
 from aiohttp.client_exceptions import ClientError, ClientResponseError
@@ -16,10 +16,11 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.redact import async_redact_data
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 from homeassistant.exceptions import ConfigEntryAuthFailed
 
 from .api import RemehaHomeAPI
-from .const import DOMAIN, TO_REDACT
+from .const import DAY_COMPLETE_TIME, DOMAIN, TO_REDACT
 from .producer_ids import ProducerIdResolver, is_valid_producer
 from .util import detect_dhw_setpoint_activity
 
@@ -72,6 +73,81 @@ def get_producers(consumption: dict) -> list[dict]:
     return (producer_stats or {}).get("producers") or []
 
 
+def get_energy_figures(consumption: dict) -> list:
+    """Return the energy figures of an appliance and its producers, to compare them.
+
+    Only the energy: the other fields, such as the time of the latest data and the
+    seasonal efficiency, can change while the energy doesn't.
+    """
+    return [
+        [consumption.get(key) for key in APPLIANCE_CONSUMPTION_DEFAULT_DATA],
+        *(
+            [producer.get(stat) for stat in PRODUCER_STATS]
+            for producer in get_producers(consumption)
+        ),
+    ]
+
+
+def has_lower_energy(consumption: dict, previous: dict) -> bool:
+    """Return whether an energy figure is lower than in the previous consumption.
+
+    The energy of a day only goes up, so lower figures belong to another day. The
+    producers are compared by heat source. A producer that had energy and is missing
+    counts as lower: its sensors would go to 0.
+    """
+
+    def figures(data: dict) -> dict:
+        result = {key: data.get(key) for key in APPLIANCE_CONSUMPTION_DEFAULT_DATA}
+        for producer in get_producers(data):
+            source = (
+                producer.get("instanceWithinDevice"),
+                producer.get("producerType"),
+                producer.get("energyType"),
+            )
+            for stat in PRODUCER_STATS:
+                result[(*source, stat)] = producer.get(stat)
+        return result
+
+    before = figures(previous)
+    after = figures(consumption)
+
+    def is_lower(key, value) -> bool:
+        if not isinstance(value, int | float):
+            return False
+        if key not in after:
+            # Only a producer can be missing
+            return value > 0
+        return isinstance(after[key], int | float) and after[key] < value
+
+    return any(is_lower(key, value) for key, value in before.items())
+
+
+def get_consumption_day(item: dict) -> date | None:
+    """Return the day an item of the daily energy consumption belongs to.
+
+    The timeStamp of a complete day is its date at 00:00 UTC. That of a day still
+    running is the time of its latest data in UTC, so in the first hour after
+    midnight the new day can carry yesterday's date: 23:00 UTC is 00:00 CET. Read
+    in local time, that is the new day.
+    """
+    timestamp = item.get("timeStamp")
+    if not isinstance(timestamp, str):
+        return None
+    try:
+        moment = datetime.fromisoformat(timestamp)
+    except ValueError:
+        return None
+    if moment.tzinfo is None or moment.time() == time(0):
+        return moment.date()
+    return dt_util.as_local(moment).date()
+
+
+def is_reported(consumption_data: dict) -> bool:
+    """Return whether the response has figures, not only the empty start of a day."""
+    data = consumption_data["data"]
+    return len(data) > 0 and data[0].get("isDataReported") is True
+
+
 class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
     """Remeha Home update coordinator."""
 
@@ -92,8 +168,10 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
         self.technical_info = {}
         self.appliance_consumption_data = {}
         self.appliance_last_consumption_data_update = {}
-        # Date of the last non-empty consumption data, to tell an empty response
-        # during the day apart from the start of a new day
+        # The day whose figures the sensors show: today, or yesterday until Remeha
+        # has finished it (see _async_update_consumption). Also tells an empty
+        # response during the day apart from the start of a new day. Unknown after a
+        # start until Remeha reports figures.
         self.appliance_consumption_data_date: dict[str, date] = {}
         self.appliance_producer_ids: dict[str, set[str]] = {}
         self.producer_id_resolver = ProducerIdResolver()
@@ -184,39 +262,7 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
                 >= timedelta(minutes=14, seconds=45)
             ):
                 try:
-                    consumption_data = (
-                        await self.api.async_get_consumption_data_for_today(
-                            appliance_id
-                        )
-                    )
-                    _LOGGER.debug(
-                        "Requested consumption data for appliance %s: %s",
-                        appliance_id,
-                        async_redact_data(consumption_data, TO_REDACT),
-                    )
-
-                    if len(consumption_data["data"]) > 0:
-                        consumption = self._process_consumption_data(
-                            appliance, consumption_data["data"][0]
-                        )
-                        self.appliance_consumption_data_date[appliance_id] = now.date()
-                    elif self.appliance_consumption_data_date.get(appliance_id) == now.date():
-                        # Empty response during the day: keep today's values, a drop to 0
-                        # would be seen as a reset and double count the day's consumption
-                        _LOGGER.debug(
-                            "No consumption data found for appliance %s, keeping today's values",
-                            appliance_id,
-                        )
-                        consumption = self.appliance_consumption_data[appliance_id]
-                    else:
-                        # Normal right after midnight, before the API has data for today
-                        _LOGGER.debug(
-                            "No consumption data found for appliance %s", appliance_id
-                        )
-                        consumption = dict(APPLIANCE_CONSUMPTION_DEFAULT_DATA)
-
-                    self.appliance_consumption_data[appliance_id] = consumption
-                    self.appliance_last_consumption_data_update[appliance_id] = now
+                    await self._async_update_consumption(appliance, now)
                 except ClientResponseError as err:
                     _LOGGER.warning(
                         "Failed to request consumption data for appliance %s: %s",
@@ -336,6 +382,139 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
                 get_producers(appliance["consumptionData"]),
             )
         return data
+
+    async def _async_update_consumption(self, appliance: dict, now: datetime) -> None:
+        """Request the energy consumption of an appliance.
+
+        The sensors show the figures of today, but Remeha reports energy about 2
+        hours late and keeps adding the last hours of a day after midnight. So after
+        midnight the sensors show yesterday's figures until yesterday is complete:
+        when Remeha reports today and yesterday's figures no longer change, or at
+        DAY_COMPLETE_TIME. Then they go to 0 for one update, the reset that Home
+        Assistant needs to count today's figures from 0 again.
+        """
+        appliance_id = appliance["applianceId"]
+        today = now.date()
+        yesterday = today - timedelta(days=1)
+        shown_day = self.appliance_consumption_data_date.get(appliance_id)
+
+        consumption_data = await self.api.async_get_consumption_data_for_today(
+            appliance_id
+        )
+        _LOGGER.debug(
+            "Requested consumption data for appliance %s: %s",
+            appliance_id,
+            async_redact_data(consumption_data, TO_REDACT),
+        )
+
+        if shown_day == yesterday and now.time() < DAY_COMPLETE_TIME:
+            # Finishing yesterday. Not after a start (shown_day unknown): the sensors
+            # may have shown today's figures before it, and yesterday's figures after
+            # those would count yesterday twice.
+            previous = self.appliance_consumption_data[appliance_id]
+            consumption = await self._async_get_consumption_of_day(
+                appliance, yesterday
+            )
+            if consumption is not None and has_lower_energy(consumption, previous):
+                # A safety net: lower figures are not yesterday's, and showing them
+                # would count yesterday twice
+                _LOGGER.debug(
+                    "Consumption data of %s for appliance %s is lower than before",
+                    yesterday,
+                    appliance_id,
+                )
+                consumption = None
+            if consumption is None:
+                _LOGGER.debug(
+                    "No consumption data of %s found for appliance %s, keeping its values",
+                    yesterday,
+                    appliance_id,
+                )
+                consumption = previous
+            elif is_reported(consumption_data) and get_energy_figures(
+                consumption
+            ) == get_energy_figures(previous):
+                # Remeha reports the energy in order, so once today is reported and
+                # yesterday's figures stay the same, yesterday is complete
+                self._start_new_day(appliance_id, today)
+                return
+        elif len(consumption_data["data"]) > 0:
+            if shown_day is not None and shown_day < today:
+                # The sensors still show an earlier day, after DAY_COMPLETE_TIME
+                self._start_new_day(appliance_id, today)
+                return
+            consumption = self._process_consumption_data(
+                appliance, consumption_data["data"][0]
+            )
+            if shown_day == today and has_lower_energy(
+                consumption, self.appliance_consumption_data[appliance_id]
+            ):
+                # Not today's figures: a drop would be seen as a reset and count
+                # the day twice, for example right after midnight when the process
+                # runs in another time zone than Home Assistant
+                _LOGGER.debug(
+                    "Consumption data for appliance %s is lower than before, keeping today's values",
+                    appliance_id,
+                )
+                consumption = self.appliance_consumption_data[appliance_id]
+            self.appliance_consumption_data_date[appliance_id] = today
+        elif shown_day == today:
+            # Empty response during the day: keep today's values, a drop to 0
+            # would be seen as a reset and double count the day's consumption
+            _LOGGER.debug(
+                "No consumption data found for appliance %s, keeping today's values",
+                appliance_id,
+            )
+            consumption = self.appliance_consumption_data[appliance_id]
+        else:
+            # Normal right after midnight after a start, or at DAY_COMPLETE_TIME,
+            # before the API has data for today
+            _LOGGER.debug(
+                "No consumption data found for appliance %s", appliance_id
+            )
+            consumption = dict(APPLIANCE_CONSUMPTION_DEFAULT_DATA)
+
+        self.appliance_consumption_data[appliance_id] = consumption
+        self.appliance_last_consumption_data_update[appliance_id] = now
+
+    async def _async_get_consumption_of_day(
+        self, appliance: dict, day: date
+    ) -> dict | None:
+        """Request the consumption of an appliance on an earlier day, None if missing."""
+        appliance_id = appliance["applianceId"]
+        consumption_data = await self.api.async_get_consumption_data_for_range(
+            appliance_id, day, day
+        )
+        _LOGGER.debug(
+            "Requested consumption data of %s for appliance %s: %s",
+            day,
+            appliance_id,
+            async_redact_data(consumption_data, TO_REDACT),
+        )
+        for item in consumption_data["data"]:
+            # An item without figures counts as missing: its zeros would be a reset,
+            # and the day's figures after it would be counted twice. Zeros can also
+            # come with isDataReported true; has_lower_energy catches those.
+            if item.get("isDataReported") is False:
+                continue
+            # Right after midnight the item of the new day can carry yesterday's date
+            if get_consumption_day(item) == day:
+                return self._process_consumption_data(appliance, item)
+        return None
+
+    def _start_new_day(self, appliance_id: str, today: date) -> None:
+        """Show today's figures from 0, after those of an earlier day.
+
+        The figures go to 0 first, also those of the producers, which aren't
+        listed: Home Assistant sees a reset, also when today's figures are close to
+        yesterday's. The update time isn't recorded, so the next update, a minute
+        later, reads today's figures.
+        """
+        _LOGGER.debug("Starting a new day for appliance %s", appliance_id)
+        self.appliance_consumption_data[appliance_id] = dict(
+            APPLIANCE_CONSUMPTION_DEFAULT_DATA
+        )
+        self.appliance_consumption_data_date[appliance_id] = today
 
     async def _async_update_heating_curve(
         self, climate_zone_id: str, now: datetime

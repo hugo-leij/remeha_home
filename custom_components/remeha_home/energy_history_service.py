@@ -17,7 +17,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.util import dt as dt_util
 import voluptuous as vol
 
-from .const import DOMAIN
+from .const import DAY_COMPLETE_TIME, DOMAIN
 from .energy_history import combine_history, history_batches
 
 _LOGGER = logging.getLogger(__name__)
@@ -80,13 +80,17 @@ def async_register_energy_history_service(hass: HomeAssistant) -> None:
 
     async def async_get_energy_history(call: ServiceCall) -> ServiceResponse:
         start, end = call.data["start_date"], call.data["end_date"]
-        # Only whole days: Remeha keeps adding to today's figures until midnight, so
-        # today and later days are left out, also when end_date includes them.
-        last_whole_day = dt_util.now().date() - timedelta(days=1)
+        # Only whole days, also when end_date includes later days. Remeha keeps
+        # adding to a day's figures after midnight, so yesterday is only whole from
+        # DAY_COMPLETE_TIME, and before that the day before yesterday is the last.
+        now = dt_util.now()
+        last_whole_day = now.date() - timedelta(
+            days=1 if now.time() >= DAY_COMPLETE_TIME else 2
+        )
         if start > last_whole_day:
             raise HomeAssistantError(
-                "The start date must be before today: Remeha only has whole days "
-                "up to yesterday"
+                f"The start date must be {last_whole_day.isoformat()} or earlier: "
+                "Remeha only has whole days up to that day"
             )
         end = min(end, last_whole_day)
         try:

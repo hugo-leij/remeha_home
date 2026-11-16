@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import copy
-from datetime import date
+from datetime import date, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
+from homeassistant.util import dt as dt_util
 import pytest
 
 from custom_components.remeha_home.api import RemehaHomeAPI
@@ -515,6 +516,13 @@ def _day(day: str) -> dict:
     return item
 
 
+def _local(hour: int, minute: int = 0) -> datetime:
+    """Return a time on 2026-11-09 in the time zone of Home Assistant."""
+    return datetime(
+        2026, 11, 9, hour, minute, tzinfo=dt_util.get_default_time_zone()
+    )
+
+
 @pytest.mark.parametrize("end", ["2026-11-09", "2026-11-10"])
 async def test_action_leaves_out_today(
     hass: HomeAssistant, config_entry, mock_api, freezer, end
@@ -524,7 +532,7 @@ async def test_action_leaves_out_today(
     The result is the same with today or a later day as the end date, also when
     the API returns today's figures.
     """
-    freezer.move_to("2026-11-09 12:00:00+00:00")
+    freezer.move_to(_local(12))
     await setup_integration(hass, config_entry, mock_api)
     mock_api.async_get_consumption_data_for_range.return_value = {
         "data": [_day("2026-11-08"), _day("2026-11-09")]
@@ -546,11 +554,48 @@ async def test_action_rejects_period_from_today(
     hass: HomeAssistant, config_entry, mock_api, freezer, start
 ) -> None:
     """A period that starts today or later has no whole days."""
-    freezer.move_to("2026-11-09 12:00:00+00:00")
+    freezer.move_to(_local(12))
     await setup_integration(hass, config_entry, mock_api)
 
-    with pytest.raises(HomeAssistantError, match="before today"):
+    with pytest.raises(HomeAssistantError, match="2026-11-08 or earlier"):
         await _history(hass, config_entry, start, "2026-11-10")
+
+    mock_api.async_get_consumption_data_for_range.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("hour", "minute", "last_whole_day"),
+    [(0, 30, "2026-11-07"), (5, 59, "2026-11-07"), (6, 0, "2026-11-08")],
+)
+async def test_action_leaves_out_yesterday_until_six(
+    hass: HomeAssistant, config_entry, mock_api, freezer, hour, minute, last_whole_day
+) -> None:
+    """Remeha keeps adding to yesterday after midnight, so it's whole from 06:00."""
+    freezer.move_to(_local(hour, minute))
+    await setup_integration(hass, config_entry, mock_api)
+    mock_api.async_get_consumption_data_for_range.return_value = {
+        "data": [_day("2026-11-07"), _day("2026-11-08"), _day("2026-11-09")]
+    }
+
+    result = await _history(hass, config_entry, "2026-11-07", "2026-11-09")
+
+    mock_api.async_get_consumption_data_for_range.assert_awaited_once_with(
+        APPLIANCE_ID, date(2026, 11, 7), date.fromisoformat(last_whole_day)
+    )
+    assert result["end_date"] == last_whole_day
+    assert result["days"][-1]["date"] == last_whole_day
+    assert result["period"]["complete"] is True
+
+
+async def test_action_rejects_yesterday_before_six(
+    hass: HomeAssistant, config_entry, mock_api, freezer
+) -> None:
+    """Before 06:00 yesterday isn't a whole day yet."""
+    freezer.move_to(_local(5, 59))
+    await setup_integration(hass, config_entry, mock_api)
+
+    with pytest.raises(HomeAssistantError, match="2026-11-07 or earlier"):
+        await _history(hass, config_entry, "2026-11-08", "2026-11-08")
 
     mock_api.async_get_consumption_data_for_range.assert_not_awaited()
 
