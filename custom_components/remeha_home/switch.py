@@ -207,6 +207,7 @@ class RemehaHomeDhwBoostSwitch(CoordinatorEntity, SwitchEntity):
     async def _async_set_mode(self, mode: str, api_call) -> None:
         """Set the zone mode, with a temporary override until the next poll."""
         zone_data = self._data
+        await self.coordinator.async_preserve_holiday_zone(self.hot_water_zone_id)
         previous_mode = zone_data.get("dhwZoneMode")
         zone_data["dhwZoneMode"] = mode
         self.async_write_ha_state()

@@ -341,6 +341,9 @@ class RemehaHomeClimateEntity(CoordinatorEntity, ClimateEntity):
                 translation_key="set_temperature_while_off",
             )
 
+        if hvac_mode in (HVACMode.AUTO, HVACMode.HEAT, HVACMode.HEAT_COOL):
+            await self.coordinator.async_preserve_holiday_zone(self.climate_zone_id)
+
         if hvac_mode == HVACMode.AUTO:
             if current_hvac_mode != HVACMode.AUTO:
                 await self.api.async_set_schedule(
@@ -389,6 +392,7 @@ class RemehaHomeClimateEntity(CoordinatorEntity, ClimateEntity):
                 },
             )
 
+        await self.coordinator.async_preserve_holiday_zone(self.climate_zone_id)
         end_time = (dt_util.utcnow() + duration).replace(microsecond=0)
         _LOGGER.debug("Setting temperature to %f until %s", temperature, end_time)
         await self.api.async_set_temporary_override(
@@ -399,6 +403,14 @@ class RemehaHomeClimateEntity(CoordinatorEntity, ClimateEntity):
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set new operation mode."""
         _LOGGER.debug("Setting operation mode to %s", hvac_mode)
+
+        if hvac_mode in (
+            HVACMode.AUTO,
+            HVACMode.HEAT,
+            HVACMode.HEAT_COOL,
+            HVACMode.OFF,
+        ):
+            await self.coordinator.async_preserve_holiday_zone(self.climate_zone_id)
 
         # Temporarily override the coordinator state until the next poll
         hvac_mode_mapping = get_hvac_mode_to_remeha_mode(self._can_cool())
@@ -457,6 +469,7 @@ class RemehaHomeClimateEntity(CoordinatorEntity, ClimateEntity):
             _LOGGER.error("Trying to set unknown preset mode %s", preset_mode)
             return
 
+        await self.coordinator.async_preserve_holiday_zone(self.climate_zone_id)
         target_preset = PRESET_MODE_TO_PRESET_INDEX[preset_mode]
 
         hvac_mode_mapping = get_hvac_mode_to_remeha_mode(self._can_cool())

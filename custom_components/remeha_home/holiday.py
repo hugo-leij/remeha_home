@@ -12,6 +12,8 @@ a cancellation in Home Assistant or in the app, and when the holiday ends by its
 
 from __future__ import annotations
 
+import asyncio
+from copy import deepcopy
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 from functools import partial
@@ -104,11 +106,25 @@ class HolidayModeRestorer:
         self._last_modes: dict[str, dict] = {}
         self._attempts: dict[str, int] = {}
         self._next_attempt: dict[str, datetime] = {}
+        self._zone_locks: dict[str, asyncio.Lock] = {}
 
     async def async_load(self) -> None:
         """Load the modes saved before a holiday."""
         data = await self._store.async_load() or {}
         self._saved = data.get("appliances", {})
+
+    async def async_preserve_zone(self, zone_id: str) -> None:
+        """Exclude an explicitly controlled zone from the current holiday recovery."""
+        async with self._zone_locks.setdefault(zone_id, asyncio.Lock()):
+            for modes in self._saved.values():
+                for group in ("climateZones", "hotWaterZones"):
+                    if zone_id in modes[group]:
+                        modes[group].pop(zone_id)
+                        # Persist before the user's command, including during HA shutdown.
+                        await self._store.async_save(
+                            {"appliances": deepcopy(self._saved)}
+                        )
+                        return
 
     @callback
     def async_update(self) -> None:
@@ -119,7 +135,7 @@ class HolidayModeRestorer:
             appliance_id = appliance["applianceId"]
             if holiday_in_effect(appliance):
                 if appliance_id not in self._saved and appliance_id in self._last_modes:
-                    self._saved[appliance_id] = self._last_modes[appliance_id]
+                    self._saved[appliance_id] = deepcopy(self._last_modes[appliance_id])
                     self._async_save()
             elif appliance_id in self._saved:
                 self._async_restore(appliance)
@@ -158,15 +174,15 @@ class HolidayModeRestorer:
         )
         self.entry.async_create_background_task(
             self.hass,
-            self._async_send(requests),
+            self._async_send(appliance_id, requests),
             f"{DOMAIN} restore the modes after a holiday",
         )
 
     def _restore_requests(
         self, appliance: dict, saved: dict, first: bool
-    ) -> list[Callable[[], Awaitable[None]]]:
+    ) -> list[tuple[str, Callable[[], Awaitable[None]]]]:
         """Return the requests that set the saved modes again."""
-        requests: list[Callable[[], Awaitable[None]]] = []
+        requests: list[tuple[str, Callable[[], Awaitable[None]]]] = []
         for zone in appliance.get("climateZones", []):
             zone_id = zone["climateZoneId"]
             before = saved["climateZones"].get(zone_id)
@@ -180,10 +196,18 @@ class HolidayModeRestorer:
                     program = before["program"] or zone.get(
                         "activeHeatingClimateTimeProgramNumber"
                     )
-                    requests.append(partial(self.api.async_set_schedule, zone_id, program))
+                    requests.append(
+                        (
+                            zone_id,
+                            partial(self.api.async_set_schedule, zone_id, program),
+                        )
+                    )
             elif before["zoneMode"] == "Manual" and mode == "FrostProtection":
                 requests.append(
-                    partial(self.api.async_set_manual, zone_id, before["setPoint"])
+                    (
+                        zone_id,
+                        partial(self.api.async_set_manual, zone_id, before["setPoint"]),
+                    )
                 )
 
         for zone in appliance.get("hotWaterZones", []):
@@ -192,26 +216,39 @@ class HolidayModeRestorer:
             if before is None or zone.get("dhwZoneMode") != "Off":
                 continue
             if before["dhwZoneMode"] in ("Scheduling", "Boost"):
-                requests.append(partial(self.api.async_set_dhw_mode_schedule, zone_id))
+                requests.append(
+                    (zone_id, partial(self.api.async_set_dhw_mode_schedule, zone_id))
+                )
             elif before["dhwZoneMode"] == "ContinuousComfort":
-                requests.append(partial(self.api.async_set_dhw_mode_comfort, zone_id))
+                requests.append(
+                    (zone_id, partial(self.api.async_set_dhw_mode_comfort, zone_id))
+                )
         return requests
 
-    async def _async_send(self, requests: list[Callable[[], Awaitable[None]]]) -> None:
+    async def _async_send(
+        self,
+        appliance_id: str,
+        requests: list[tuple[str, Callable[[], Awaitable[None]]]],
+    ) -> None:
         """Send the requests, and check the result once the API has applied them."""
-        for request in requests:
-            try:
-                await request()
-            except Exception as err:  # noqa: BLE001
-                # The next attempt sends it again
-                _LOGGER.warning("Failed to restore a zone mode after the holiday: %s", err)
+        for zone_id, request in requests:
+            async with self._zone_locks.setdefault(zone_id, asyncio.Lock()):
+                # A user action may have excluded the zone since this batch was queued.
+                saved = self._saved.get(appliance_id, {})
+                if not any(zone_id in zones for zones in saved.values()):
+                    continue
+                try:
+                    await request()
+                except Exception as err:  # noqa: BLE001
+                    # The next attempt sends it again.
+                    _LOGGER.warning(
+                        "Failed to restore a zone mode after the holiday: %s", err
+                    )
 
         async def _refresh(_now: datetime) -> None:
             await self.coordinator.async_request_refresh()
 
-        self.entry.async_on_unload(
-            async_call_later(self.hass, REFRESH_DELAY, _refresh)
-        )
+        self.entry.async_on_unload(async_call_later(self.hass, REFRESH_DELAY, _refresh))
 
     @callback
     def _async_done(self, appliance_id: str) -> None:

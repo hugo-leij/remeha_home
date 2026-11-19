@@ -141,6 +141,7 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
             name=DOMAIN,
             update_interval=timedelta(seconds=60),
         )
+        self.on_holiday_zone_command: Callable[[str], Awaitable[None]] | None = None
         self.api = api
         self.items = {}
         self.device_info = {}
@@ -773,6 +774,11 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
                     producer[key] = round(producer[key] / calorific_value, 2)
 
         return consumption
+
+    async def async_preserve_holiday_zone(self, zone_id: str) -> None:
+        """Give an explicit zone command priority over any pending holiday recovery."""
+        if self.on_holiday_zone_command is not None:
+            await self.on_holiday_zone_command(zone_id)
 
     def get_by_id(self, item_id: str):
         """Return item with the specified item id."""

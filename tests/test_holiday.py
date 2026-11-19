@@ -5,7 +5,9 @@ from __future__ import annotations
 from datetime import timedelta
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 import homeassistant.util.dt as dt_util
+import pytest
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.remeha_home.holiday import (
@@ -39,7 +41,11 @@ def start_holiday(appliance: dict, climate_zone: dict, hot_water_zone: dict) -> 
 
 def end_holiday(appliance: dict) -> None:
     """End the holiday, leaving the zones as they are."""
-    appliance["holidaySchedule"] = {"startTime": NOT_SET, "endTime": NOT_SET, "active": False}
+    appliance["holidaySchedule"] = {
+        "startTime": NOT_SET,
+        "endTime": NOT_SET,
+        "active": False,
+    }
 
 
 async def wait(hass: HomeAssistant, freezer, seconds: float) -> None:
@@ -333,3 +339,65 @@ async def test_remove_entry(
     await hass.async_block_till_done()
 
     assert storage_key(config_entry) not in hass_storage
+
+
+@pytest.mark.parametrize("control", ["heating", "hot_water"])
+async def test_explicit_mode_wins_across_holiday_reload(
+    hass: HomeAssistant,
+    config_entry,
+    mock_api,
+    appliance,
+    climate_zone,
+    hot_water_zone,
+    hass_storage,
+    control,
+) -> None:
+    """A service command excludes just its zone and survives an entry reload."""
+    climate_zone["zoneMode"] = "Scheduling"
+    await setup_integration(hass, config_entry, mock_api)
+    start_holiday(appliance, climate_zone, hot_water_zone)
+    await update(hass, config_entry)
+    registry = er.async_get(hass)
+    if control == "heating":
+        target = registry.async_get_entity_id(
+            "climate", "remeha_home", f"remeha_home_{CLIMATE_ZONE_ID}"
+        )
+        await hass.services.async_call(
+            "climate",
+            "set_hvac_mode",
+            {"entity_id": target, "hvac_mode": "off"},
+            blocking=True,
+        )
+        mock_api.async_set_off.assert_awaited_once_with(CLIMATE_ZONE_ID)
+        group, zone_id = "climateZones", CLIMATE_ZONE_ID
+    else:
+        target = registry.async_get_entity_id(
+            "water_heater",
+            "remeha_home",
+            f"remeha_home_{HOT_WATER_ZONE_ID}_water_heater",
+        )
+        await hass.services.async_call(
+            "water_heater",
+            "set_operation_mode",
+            {"entity_id": target, "operation_mode": "eco"},
+            blocking=True,
+        )
+        mock_api.async_set_dhw_mode_eco.assert_awaited_once_with(HOT_WATER_ZONE_ID)
+        group, zone_id = "hotWaterZones", HOT_WATER_ZONE_ID
+
+    saved = next(
+        iter(hass_storage[storage_key(config_entry)]["data"]["appliances"].values())
+    )
+    assert zone_id not in saved[group]
+    assert await hass.config_entries.async_unload(config_entry.entry_id)
+    await hass.async_block_till_done()
+    await setup_integration(hass, config_entry, mock_api)
+    end_holiday(appliance)
+    await update(hass, config_entry)
+
+    if control == "heating":
+        mock_api.async_set_schedule.assert_not_awaited()
+        mock_api.async_set_dhw_mode_schedule.assert_awaited_once_with(HOT_WATER_ZONE_ID)
+    else:
+        mock_api.async_set_dhw_mode_schedule.assert_not_awaited()
+        mock_api.async_set_schedule.assert_awaited_once_with(CLIMATE_ZONE_ID, 1)

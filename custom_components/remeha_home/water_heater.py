@@ -67,9 +67,7 @@ async def async_setup_entry(
     for appliance in coordinator.data["appliances"]:
         for hot_water_zone in appliance["hotWaterZones"]:
             hot_water_zone_id = hot_water_zone["hotWaterZoneId"]
-            entities.append(
-                RemehaHomeWaterHeater(api, coordinator, hot_water_zone_id)
-            )
+            entities.append(RemehaHomeWaterHeater(api, coordinator, hot_water_zone_id))
 
     async_add_entities(entities)
 
@@ -100,7 +98,9 @@ class RemehaHomeWaterHeater(CoordinatorEntity, WaterHeaterEntity):
         super().__init__(coordinator)
         self.api = api
         self.hot_water_zone_id = hot_water_zone_id
-        self._attr_unique_id = "_".join([DOMAIN, self.hot_water_zone_id, "water_heater"])
+        self._attr_unique_id = "_".join(
+            [DOMAIN, self.hot_water_zone_id, "water_heater"]
+        )
 
     @property
     def _data(self) -> dict:
@@ -237,6 +237,8 @@ class RemehaHomeWaterHeater(CoordinatorEntity, WaterHeaterEntity):
             setpoint_key = "reducedSetpoint"
             set_setpoint = self.api.async_set_dhw_reduced_setpoint
 
+        await self.coordinator.async_preserve_holiday_zone(self.hot_water_zone_id)
+
         # Optimistic local update to avoid transient UI mismatches, undone when the
         # API refuses the new temperature
         data = self._data
@@ -258,6 +260,13 @@ class RemehaHomeWaterHeater(CoordinatorEntity, WaterHeaterEntity):
         if not target_mode:
             return
 
+        if target_mode == "Boost" and self._data.get("dhwZoneMode") != "Scheduling":
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="boost_requires_schedule",
+            )
+        await self.coordinator.async_preserve_holiday_zone(self.hot_water_zone_id)
+
         if target_mode == "ContinuousComfort":
             await self.api.async_set_dhw_mode_comfort(self.hot_water_zone_id)
         elif target_mode == "Scheduling":
@@ -265,11 +274,6 @@ class RemehaHomeWaterHeater(CoordinatorEntity, WaterHeaterEntity):
         elif target_mode == "Off":
             await self.api.async_set_dhw_mode_eco(self.hot_water_zone_id)
         elif target_mode == "Boost":
-            if self._data.get("dhwZoneMode") != "Scheduling":
-                raise ServiceValidationError(
-                    translation_domain=DOMAIN,
-                    translation_key="boost_requires_schedule",
-                )
             await self.api.async_set_hot_water_boost(self.hot_water_zone_id)
         else:
             return
