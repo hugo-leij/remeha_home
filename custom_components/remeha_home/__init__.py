@@ -82,7 +82,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     coordinator.on_producer_ids_changed = save_producer_ids
     holiday_restorer = HolidayModeRestorer(hass, entry, coordinator, api)
     await holiday_restorer.async_load()
-    coordinator.on_holiday_zone_command = holiday_restorer.async_preserve_zone
+    coordinator.holiday_zone_command = holiday_restorer.async_zone_command
 
     await coordinator.async_config_entry_first_refresh()
     entry.async_on_unload(coordinator.async_add_listener(holiday_restorer.async_update))

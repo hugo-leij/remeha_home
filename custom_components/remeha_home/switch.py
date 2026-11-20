@@ -206,19 +206,21 @@ class RemehaHomeDhwBoostSwitch(CoordinatorEntity, SwitchEntity):
 
     async def _async_set_mode(self, mode: str, api_call) -> None:
         """Set the zone mode, with a temporary override until the next poll."""
-        zone_data = self._data
-        await self.coordinator.async_preserve_holiday_zone(self.hot_water_zone_id)
-        previous_mode = zone_data.get("dhwZoneMode")
-        zone_data["dhwZoneMode"] = mode
-        self.async_write_ha_state()
-
-        try:
-            await api_call(self.hot_water_zone_id)
-        except Exception:
-            # Revert the temporary override, the zone did not change
-            zone_data["dhwZoneMode"] = previous_mode
+        async with self.coordinator.async_holiday_zone_command(
+            self.hot_water_zone_id, preserve_during_holiday=mode == "Boost"
+        ):
+            zone_data = self._data
+            previous_mode = zone_data.get("dhwZoneMode")
+            zone_data["dhwZoneMode"] = mode
             self.async_write_ha_state()
-            raise
+
+            try:
+                await api_call(self.hot_water_zone_id)
+            except Exception:
+                # Revert the temporary override, the zone did not change
+                zone_data["dhwZoneMode"] = previous_mode
+                self.async_write_ha_state()
+                raise
 
         await self.coordinator.async_request_refresh()
 

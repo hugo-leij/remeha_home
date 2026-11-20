@@ -23,8 +23,8 @@ So the integration sets the modes back itself:
     - the hot water to its schedule, or to comfort.
 - A climate zone that followed its clock program is set to it once more, also when it already shows the clock program again, because it can still keep the frost protection setpoint.
 - A temporary change of the clock program, and a hot water boost, come back as the plain clock program and schedule.
-- A zone that is in another mode after the holiday keeps that mode, for example when you changed it yourself.
-  Off is the exception: off is frost protection, the same mode the holiday uses, so a zone that you set to off during the holiday is also set back. The same goes for hot water that you turned off. Turn it off again after the holiday if you want it to stay off.
+- A zone whose mode you successfully change in Home Assistant during the holiday or during the recovery keeps your choice. During the holiday, choosing Off or Frost protection for heating, or Eco or cancelling Boost for hot water, lets the integration restore the mode saved before the holiday. To keep a zone off, turn it off after the holiday.
+- If an action fails or only adjusts a hot water setpoint, the zone keeps its previous recovery setting.
 - It checks the result 15 seconds later, and tries up to three times. If the zones are still not back, it logs a warning.
 
 This works when you cancel the holiday in Home Assistant or in the Remeha Home app, and when the holiday ends by itself.

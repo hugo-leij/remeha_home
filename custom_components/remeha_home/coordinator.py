@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Awaitable, Callable
+from contextlib import AbstractAsyncContextManager, nullcontext
 from datetime import date, datetime, timedelta
 import logging
 
@@ -141,7 +142,9 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
             name=DOMAIN,
             update_interval=timedelta(seconds=60),
         )
-        self.on_holiday_zone_command: Callable[[str], Awaitable[None]] | None = None
+        self.holiday_zone_command: (
+            Callable[[str, bool], AbstractAsyncContextManager[None]] | None
+        ) = None
         self.api = api
         self.items = {}
         self.device_info = {}
@@ -775,10 +778,13 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
 
         return consumption
 
-    async def async_preserve_holiday_zone(self, zone_id: str) -> None:
-        """Give an explicit zone command priority over any pending holiday recovery."""
-        if self.on_holiday_zone_command is not None:
-            await self.on_holiday_zone_command(zone_id)
+    def async_holiday_zone_command(
+        self, zone_id: str, preserve_during_holiday: bool = True
+    ) -> AbstractAsyncContextManager[None]:
+        """Serialize a zone mode change with pending holiday recovery."""
+        if self.holiday_zone_command is None:
+            return nullcontext()
+        return self.holiday_zone_command(zone_id, preserve_during_holiday)
 
     def get_by_id(self, item_id: str):
         """Return item with the specified item id."""
