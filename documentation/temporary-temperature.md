@@ -17,7 +17,7 @@ data:
 - The override lasts until its end time, also past a switch of the clock program. For example, an override of an hour started at 16:50 ends at 17:50, also when the clock program switches at 17:20. After the end time the zone follows the clock program again.
 - Changing the zone in the Remeha Home app during the override can change its end time. On a Remeha Elga Ace the end time was moved to the next switch of the clock program.
 - The zone must be in auto mode, so following its clock program. In heat or off mode the action asks you to set the zone to auto first.
-- During the override the thermostat shows auto, and the end time is in the Override End sensor and the `override_end_time` attribute.
+- During the override the thermostat shows auto, the `zone_mode` attribute is `TemporaryOverride`, and the end time is in the Override End sensor and the `override_end_time` attribute.
 - Running the action again replaces the override. To stop it early, set the zone to heat or off, or select another clock program: the appliance ends the override when the program changes.
 - The action needs a zone that reports support for an end time (`capabilityTemporaryOverrideEndTime`). Otherwise it shows an error.
 

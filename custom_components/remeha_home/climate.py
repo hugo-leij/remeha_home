@@ -210,11 +210,18 @@ class RemehaHomeClimateEntity(CoordinatorEntity, ClimateEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return the end of a temporary override, None when there is none."""
+        """Return the zone mode and the end of a temporary override.
+
+        The zone mode tells a temporary override apart from the clock program, which
+        both show as auto. The end time is None when there is no override.
+        """
         end = remeha_utc_time(
             (self._data.get("temporaryOverride") or {}).get("endTime")
         )
-        return {"override_end_time": dt_util.as_local(end).isoformat() if end else None}
+        return {
+            "zone_mode": self._data.get("zoneMode"),
+            "override_end_time": dt_util.as_local(end).isoformat() if end else None,
+        }
 
     def _get_appliance_data(self) -> dict | None:
         """Get the appliance data for this climate zone."""

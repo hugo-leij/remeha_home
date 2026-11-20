@@ -267,6 +267,14 @@ HEATING_CURVE_SENSOR_TYPES = [
     ),
 ]
 
+SOLAR_THERMAL_SENSOR_TYPES = [
+    SensorEntityDescription(
+        key="status",
+        name="Status",
+        icon="mdi:solar-power-variant",
+    ),
+]
+
 HOT_WATER_ZONE_SENSOR_TYPES = [
     SensorEntityDescription(
         key="dhwTemperature",

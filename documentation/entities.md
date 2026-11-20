@@ -28,6 +28,8 @@ The entities that the integration creates, per climate zone, hot water zone, app
     - The active clock program (diagnostic), with the week schedule of that program as an attribute. See [Clock program schedules](clock-programs.md).
     - The current schedule setpoint, as Remeha reports it. Right after a switch of the clock program it can still show the setpoint of the previous program for a while.
     - The end time of a temporary override (unknown when there is none), also as the `override_end_time` attribute of the climate entity
+    - The mode as Remeha reports it, as the `zone_mode` attribute of the climate entity: `Scheduling`, `TemporaryOverride`, `Manual` or `FrostProtection`.
+    A zone that follows its clock program and a zone with a temporary override both show auto mode, so `zone_mode` tells them apart, also for an override until the next switch of the clock program.
     - Switch to control fireplace mode
     - The heating curve slope and base setpoint (if supported by the appliance), and its maximum flow temperature (diagnostic).
     They are updated every 15 minutes, so changes made in the Remeha Home app show up. After a change in Home Assistant, the next update is 15 minutes later, because Remeha can still answer with the old values right after a change.
@@ -55,6 +57,7 @@ The entities that the integration creates, per climate zone, hot water zone, app
     - The outdoor temperature measured by the appliance, and the outdoor temperature from the Remeha cloud (disabled by default)
     - Holiday mode (binary sensor), with the scheduled `start_date` and `end_date` as attributes, and actions to schedule and cancel a holiday. After a holiday, the integration sets the zones back to their modes. See [Holiday mode](holiday-mode.md).
     - The energy consumed and delivered today for heating, hot water and cooling, for the appliance as a whole (disabled by default)
+- A solar thermal system connected to an appliance is a separate device with its status (e.g. Standby).
 - Each producer (heat source) of an appliance, such as the heat pump and the gas boiler of a hybrid system, is a separate device with:
     - For heat pumps (and other electric producers): the energy consumed and delivered today for heating, hot water and cooling, and the seasonal efficiency
     - For gas boilers: the gas used today for heating and hot water, in m³
