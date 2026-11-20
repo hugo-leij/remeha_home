@@ -103,6 +103,8 @@ The available fields differ per appliance. The most important ones:
 | `activeDwhTimeProgramNumber` | The active clock program of the hot water zone, `1` on the measured systems |
 | `optimizationEnabled` | Whether hot water optimization is enabled. Not reported by every appliance; `capabilityDhwOptimization` of the appliance says whether it supports it. Both `false` on the measured hybrid |
 | `boostModeEndTime` | End of a boost (UTC), `null` when not boosting |
+| **Solar thermal system** | In `solarThermals` of the appliance, an empty list without one |
+| `solarThermalId`, `status` | The id and status, e.g. `Standby`. Reported on a BRÖTJE BLW Eco-R heat pump with solar thermal; the collector and storage temperature that the app shows are not in the dashboard |
 
 <details>
 <summary>Example: hybrid heat pump with a combi hot water zone</summary>

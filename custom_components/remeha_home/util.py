@@ -111,3 +111,15 @@ def get_consumption_day(item: dict) -> date | None:
     if moment.tzinfo is None or moment.time() == time(0):
         return moment.date()
     return dt_util.as_local(moment).date()
+
+
+def solar_thermals(appliance: dict) -> list[dict]:
+    """Return the solar thermal systems of an appliance that have an id."""
+    systems = appliance.get("solarThermals")
+    if not isinstance(systems, list):
+        return []
+    return [
+        system
+        for system in systems
+        if isinstance(system, dict) and isinstance(system.get("solarThermalId"), str)
+    ]

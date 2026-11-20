@@ -21,7 +21,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed
 from .api import RemehaHomeAPI
 from .const import DAY_COMPLETE_TIME, DOMAIN, TO_REDACT
 from .producer_ids import ProducerIdResolver, is_valid_producer
-from .util import detect_dhw_setpoint_activity, get_consumption_day
+from .util import detect_dhw_setpoint_activity, get_consumption_day, solar_thermals
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -352,6 +352,17 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
                     name=hot_water_zone["name"],
                     manufacturer="Remeha",
                     model="Hot Water Zone",
+                    via_device_id=appliance_device_id,
+                )
+
+            for solar_thermal in solar_thermals(appliance):
+                solar_thermal_id = solar_thermal["solarThermalId"]
+                self.items[solar_thermal_id] = solar_thermal
+                self.device_info[solar_thermal_id] = DeviceInfo(
+                    identifiers={(DOMAIN, solar_thermal_id)},
+                    name="Solar Thermal System",
+                    manufacturer="Remeha",
+                    model="Solar Thermal System",
                     via_device_id=appliance_device_id,
                 )
 

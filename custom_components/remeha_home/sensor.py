@@ -26,6 +26,7 @@ from .const import (
     GAS_PRODUCER_SENSOR_TYPES,
     ELECTRIC_PRODUCER_SENSOR_TYPES,
     PRESET_INDEX_TO_PRESET_MODE,
+    SOLAR_THERMAL_SENSOR_TYPES,
 )
 from .coordinator import (
     PRODUCER_STATS,
@@ -38,6 +39,7 @@ from .util import (
     remeha_utc_time,
     reports_dhw_temperature,
     reports_water_pressure,
+    solar_thermals,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -123,6 +125,13 @@ async def async_setup_entry(
                         coordinator, hot_water_zone_id, entity_description
                     )
                 )
+        for solar_thermal in solar_thermals(appliance):
+            entities.extend(
+                RemehaHomeSensor(
+                    coordinator, solar_thermal["solarThermalId"], entity_description
+                )
+                for entity_description in SOLAR_THERMAL_SENSOR_TYPES
+            )
     async_add_entities(entities)
 
     _async_remove_replaced_sensors(hass, coordinator)
