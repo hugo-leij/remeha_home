@@ -5,7 +5,9 @@ from __future__ import annotations
 from datetime import timedelta
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 import homeassistant.util.dt as dt_util
+import pytest
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.remeha_home.holiday import (
@@ -333,3 +335,127 @@ async def test_remove_entry(
     await hass.async_block_till_done()
 
     assert storage_key(config_entry) not in hass_storage
+
+
+@pytest.mark.parametrize(
+    ("control", "mode", "api_name", "preserve", "fails"),
+    [
+        ("heating", "heat_cool", "async_set_manual", True, False),
+        ("hot_water", "performance", "async_set_dhw_mode_comfort", True, False),
+        ("heating", "off", "async_set_off", False, False),
+        ("preset", "anti_frost", "async_set_off", False, False),
+        ("hot_water", "eco", "async_set_dhw_mode_eco", False, False),
+        ("heating", "heat_cool", "async_set_manual", False, True),
+        ("hot_water", "performance", "async_set_dhw_mode_comfort", False, True),
+    ],
+)
+async def test_zone_commands_across_holiday_reload(
+    hass: HomeAssistant,
+    config_entry,
+    mock_api,
+    appliance,
+    climate_zone,
+    hot_water_zone,
+    freezer,
+    hass_storage,
+    control,
+    mode,
+    api_name,
+    preserve,
+    fails,
+) -> None:
+    """Only a successful mode change beyond the holiday mode prevents restoration."""
+    climate_zone["zoneMode"] = "Scheduling"
+    await setup_integration(hass, config_entry, mock_api)
+    start_holiday(appliance, climate_zone, hot_water_zone)
+    await update(hass, config_entry)
+    await wait(hass, freezer, 2)
+    registry = er.async_get(hass)
+    if control != "hot_water":
+        target = registry.async_get_entity_id(
+            "climate", "remeha_home", f"remeha_home_{CLIMATE_ZONE_ID}"
+        )
+        domain, zone_id = "climate", CLIMATE_ZONE_ID
+        if control == "preset":
+            action, field = "set_preset_mode", "preset_mode"
+        else:
+            action, field = "set_hvac_mode", "hvac_mode"
+    else:
+        target = registry.async_get_entity_id(
+            "water_heater",
+            "remeha_home",
+            f"remeha_home_{HOT_WATER_ZONE_ID}_water_heater",
+        )
+        domain, zone_id = "water_heater", HOT_WATER_ZONE_ID
+        action, field = "set_operation_mode", "operation_mode"
+
+    api_call = getattr(mock_api, api_name)
+    if fails:
+        api_call.side_effect = RuntimeError("rejected")
+        with pytest.raises(RuntimeError, match="rejected"):
+            await hass.services.async_call(
+                domain, action, {"entity_id": target, field: mode}, blocking=True
+            )
+    else:
+        await hass.services.async_call(
+            domain, action, {"entity_id": target, field: mode}, blocking=True
+        )
+    assert api_call.await_count == 1
+
+    saved = next(
+        iter(hass_storage[storage_key(config_entry)]["data"]["appliances"].values())
+    )
+    assert (zone_id in saved.get("excludedZones", ())) is preserve
+    assert await hass.config_entries.async_unload(config_entry.entry_id)
+    await hass.async_block_till_done()
+    await setup_integration(hass, config_entry, mock_api)
+    # The appliance can still report its holiday modes when the holiday ends.
+    climate_zone["zoneMode"] = "FrostProtection"
+    hot_water_zone["dhwZoneMode"] = "Off"
+    end_holiday(appliance)
+    await update(hass, config_entry)
+
+    if preserve and control == "heating":
+        mock_api.async_set_schedule.assert_not_awaited()
+    else:
+        mock_api.async_set_schedule.assert_awaited_once_with(CLIMATE_ZONE_ID, 1)
+    if preserve and control == "hot_water":
+        mock_api.async_set_dhw_mode_schedule.assert_not_awaited()
+    else:
+        mock_api.async_set_dhw_mode_schedule.assert_awaited_once_with(HOT_WATER_ZONE_ID)
+
+
+async def test_cancel_boost_during_holiday_restores_hot_water(
+    hass: HomeAssistant,
+    config_entry,
+    mock_api,
+    appliance,
+    climate_zone,
+    hot_water_zone,
+    hass_storage,
+) -> None:
+    """Cancelling a boost during the holiday makes the original DHW mode eligible again."""
+    await setup_integration(hass, config_entry, mock_api)
+    start_holiday(appliance, climate_zone, hot_water_zone)
+    await update(hass, config_entry)
+    # Remeha only accepts boost in schedule mode.
+    hot_water_zone["dhwZoneMode"] = "Scheduling"
+    await update(hass, config_entry)
+    target = {"entity_id": "switch.dhw_boost"}
+    await hass.services.async_call("switch", "turn_on", target, blocking=True)
+    mock_api.async_set_hot_water_boost.assert_awaited_once_with(HOT_WATER_ZONE_ID)
+    saved = next(
+        iter(hass_storage[storage_key(config_entry)]["data"]["appliances"].values())
+    )
+    assert HOT_WATER_ZONE_ID in saved["excludedZones"]
+
+    hot_water_zone["dhwZoneMode"] = "Boost"
+    await update(hass, config_entry)
+    await hass.services.async_call("switch", "turn_off", target, blocking=True)
+    mock_api.async_set_dhw_mode_schedule.assert_awaited_once_with(HOT_WATER_ZONE_ID)
+
+    mock_api.async_set_dhw_mode_schedule.reset_mock()
+    hot_water_zone["dhwZoneMode"] = "Off"
+    end_holiday(appliance)
+    await update(hass, config_entry)
+    mock_api.async_set_dhw_mode_schedule.assert_awaited_once_with(HOT_WATER_ZONE_ID)

@@ -258,26 +258,29 @@ class RemehaHomeWaterHeater(CoordinatorEntity, WaterHeaterEntity):
         if not target_mode:
             return
 
-        if target_mode == "ContinuousComfort":
-            await self.api.async_set_dhw_mode_comfort(self.hot_water_zone_id)
-        elif target_mode == "Scheduling":
-            await self.api.async_set_dhw_mode_schedule(self.hot_water_zone_id)
-        elif target_mode == "Off":
-            await self.api.async_set_dhw_mode_eco(self.hot_water_zone_id)
-        elif target_mode == "Boost":
-            if self._data.get("dhwZoneMode") != "Scheduling":
-                raise ServiceValidationError(
-                    translation_domain=DOMAIN,
-                    translation_key="boost_requires_schedule",
-                )
-            await self.api.async_set_hot_water_boost(self.hot_water_zone_id)
-        else:
-            return
+        async with self.coordinator.async_holiday_zone_command(
+            self.hot_water_zone_id, preserve_during_holiday=target_mode != "Off"
+        ):
+            if target_mode == "ContinuousComfort":
+                await self.api.async_set_dhw_mode_comfort(self.hot_water_zone_id)
+            elif target_mode == "Scheduling":
+                await self.api.async_set_dhw_mode_schedule(self.hot_water_zone_id)
+            elif target_mode == "Off":
+                await self.api.async_set_dhw_mode_eco(self.hot_water_zone_id)
+            elif target_mode == "Boost":
+                if self._data.get("dhwZoneMode") != "Scheduling":
+                    raise ServiceValidationError(
+                        translation_domain=DOMAIN,
+                        translation_key="boost_requires_schedule",
+                    )
+                await self.api.async_set_hot_water_boost(self.hot_water_zone_id)
+            else:
+                return
 
-        # Optimistic update until the coordinator polls fresh data
-        self._data["dhwZoneMode"] = target_mode
-        self._set_optimistic_target_setpoint(target_mode)
-        self.async_write_ha_state()
+            # Optimistic update until the coordinator polls fresh data
+            self._data["dhwZoneMode"] = target_mode
+            self._set_optimistic_target_setpoint(target_mode)
+            self.async_write_ha_state()
         await self.coordinator.async_request_refresh()
 
     def _set_optimistic_target_setpoint(self, target_mode: str) -> None:
