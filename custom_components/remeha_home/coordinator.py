@@ -167,6 +167,9 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
         self.activities_last_update: dict[str, datetime] = {}
         # The switching points of the active clock program of each zone
         self.time_program_data: dict[str, dict] = {}
+        # The details of each solar thermal system, only for the diagnostics
+        self.solar_thermal_data: dict[str, object] = {}
+        self.solar_thermal_last_update: dict[str, datetime] = {}
         self.time_program_last_update: dict[str, datetime] = {}
         # The pre-heat settings written from Home Assistant that the dashboard doesn't
         # report yet, with the time of the write, see _keep_written_pre_heat
@@ -362,6 +365,7 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
             for solar_thermal in solar_thermals(appliance):
                 solar_thermal_id = solar_thermal["solarThermalId"]
                 self.items[solar_thermal_id] = solar_thermal
+                await self._async_update_solar_thermal(solar_thermal_id, now)
                 self.device_info[solar_thermal_id] = DeviceInfo(
                     identifiers={(DOMAIN, solar_thermal_id)},
                     name="Solar Thermal System",
@@ -600,6 +604,37 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
             async_redact_data(activities, TO_REDACT),
         )
         self.set_activities(climate_zone_id, activities, now)
+
+    async def _async_update_solar_thermal(
+        self, solar_thermal_id: str, now: datetime
+    ) -> None:
+        """Request the details of a solar thermal system every 15 minutes.
+
+        The response isn't known yet, so it's only kept for the diagnostics. A failed
+        request is tried again after 15 minutes as well, so an appliance without
+        these details doesn't cause a request every minute.
+        """
+        last_update = self.solar_thermal_last_update.get(solar_thermal_id)
+        if last_update is not None and now - last_update < timedelta(
+            minutes=14, seconds=45
+        ):
+            return
+        self.solar_thermal_last_update[solar_thermal_id] = now
+        try:
+            details = await self.api.async_get_solar_thermal(solar_thermal_id)
+        except (ClientError, TimeoutError) as err:
+            _LOGGER.debug(
+                "Failed to request the details of solar thermal system %s: %r",
+                solar_thermal_id,
+                err,
+            )
+            return
+        _LOGGER.debug(
+            "Requested the details of solar thermal system %s: %s",
+            solar_thermal_id,
+            async_redact_data(details, TO_REDACT),
+        )
+        self.solar_thermal_data[solar_thermal_id] = details
 
     async def _async_update_time_program(
         self,

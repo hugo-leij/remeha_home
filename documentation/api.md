@@ -9,9 +9,10 @@ This page describes the parts of that API that this integration uses, and how th
 ## Contents
 - [Basics](#basics): requests, times and errors
 - [Dashboard](#dashboard): the state of all appliances and zones
-- [Appliances](#appliances): technical details and holiday mode
+- [Appliances](#appliances): technical details, pre-heat and holiday mode
 - [Climate zones](#climate-zones): modes, setpoints, heating curve and activities
 - [Hot water zones](#hot-water-zones): modes, boost and setpoints
+- [Solar thermal systems](#solar-thermal-systems): details of a solar thermal system
 - [Energy consumption](#energy-consumption): energy per hour, day, month and year
 
 ## Basics
@@ -431,6 +432,15 @@ When the holiday is over, the appliance restores the modes, but not always right
 
 On a BAXI heat pump, a zone was reported to show `Scheduling` again but keep the 6 °C setpoint until [`modes/schedule`](#climate-zones) was sent again, and the hot water to stay `Off`.
 The integration saves the modes when a holiday starts, and sets them again when it is over.
+
+## Solar thermal systems
+```http
+GET /solarthermals/{solar_thermal_id}
+```
+
+Probably returns the details that the app shows on its solar thermal page, such as the collector and storage temperature. The id is `solarThermalId` from `solarThermals` in the [dashboard](#get-the-dashboard).
+The route exists: with an unknown id it answers 404 with `"detail": "Given Solar Thermal Id does not exist."`, like the other endpoints with an unknown id, while an unknown route answers `"message": "Resource not found"` (checked on 2026-11-23).
+Its response is not known yet. The integration requests it every 15 minutes and only puts it in the diagnostics (`solar_thermals`), to find out what it reports.
 
 ## Climate zones
 

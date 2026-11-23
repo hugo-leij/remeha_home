@@ -487,6 +487,44 @@ async def test_new_day_with_the_date_of_yesterday_is_not_a_conflict(
     assert result["period"]["heat_pump_heating_delivered_kwh"] == 68.0
 
 
+def test_producer_hot_water_and_total() -> None:
+    """Each producer has its hot water and total energy, also a solar thermal one.
+
+    A solar thermal system may only report energy for hot water or in total, so
+    the heating figures alone would show it as 0.
+    """
+    item = _january_9()
+    producers = item["producerPerformanceStatistics"]["producers"]
+    producers[0]["energyConsumptionDHW"] = 2.0
+    producers[0]["energyProductionDHW"] = 6.123
+    producers.append(
+        {
+            "instanceWithinDevice": 1,
+            "producerType": "SolarThermal",
+            "energyType": "SolarThermal",
+            "energyConsumptionCH": 0.0,
+            "energyProductionCH": 0.0,
+            "energyConsumptionDHW": 0.0,
+            "energyProductionDHW": 4.0,
+            "energyConsumptionTotal": 0.0,
+            "energyProductionTotal": 4.0,
+        }
+    )
+
+    result = combine_history(date(2026, 1, 9), date(2026, 1, 9), [{"data": [item]}])
+
+    (day,) = result["days"]
+    by_type = {producer["producer_type"]: producer for producer in day["producers"]}
+    assert by_type["HeatPumpAirSource"]["hot_water_consumed_kwh"] == 2.0
+    assert by_type["HeatPumpAirSource"]["hot_water_delivered_kwh"] == 6.12
+    solar = by_type["SolarThermal"]
+    assert solar["heating_delivered_kwh"] == 0.0
+    assert solar["hot_water_delivered_kwh"] == 4.0
+    assert solar["total_delivered_kwh"] == 4.0
+    # The heat pump figures don't include the solar energy
+    assert day["heat_pump_heating_delivered_kwh"] == 68.0
+
+
 def test_conflicting_day_keeps_totals_for_other_reported_days() -> None:
     """Conflicts omit a date, without suppressing clean partial-period totals."""
     second = _january_9()

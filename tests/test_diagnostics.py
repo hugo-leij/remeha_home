@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+from unittest.mock import MagicMock
+
+from aiohttp import ClientResponseError
 import pytest
 from homeassistant.components.diagnostics import REDACTED
 from homeassistant.core import HomeAssistant
@@ -17,6 +21,7 @@ from .conftest import (
     CLIMATE_ZONE_ID,
     HOT_WATER_ZONE_ID,
     load_fixture,
+    refresh,
     setup_integration,
 )
 
@@ -133,3 +138,63 @@ async def test_personal_data_redacted(
     # The data of the integration itself is not changed
     coordinator = hass.data[DOMAIN][config_entry.entry_id]["coordinator"]
     assert coordinator.data["appliances"][0]["houseName"] == "Home"
+
+
+SOLAR_THERMAL_ID = "solar-thermal-1"
+
+
+async def test_solar_thermal_details(
+    hass: HomeAssistant, hass_client, config_entry, mock_api, appliance, freezer
+) -> None:
+    """The details of a solar thermal system are in the diagnostics.
+
+    Its response isn't known yet, so the diagnostics are the way to find out what
+    it reports. It is requested every 15 minutes.
+    """
+    appliance["solarThermals"] = [
+        {"solarThermalId": SOLAR_THERMAL_ID, "status": "Standby"}
+    ]
+    mock_api.async_get_solar_thermal.return_value = {
+        "solarThermalId": SOLAR_THERMAL_ID,
+        "name": "Solar",
+        "collectorTemperature": 6.0,
+    }
+    await setup_integration(hass, config_entry, mock_api)
+    mock_api.async_get_solar_thermal.assert_awaited_once_with(SOLAR_THERMAL_ID)
+
+    diagnostics = await get_diagnostics_for_config_entry(
+        hass, hass_client, config_entry
+    )
+    details = diagnostics["solar_thermals"][SOLAR_THERMAL_ID]
+    assert details["collectorTemperature"] == 6.0
+    assert details["name"] == REDACTED
+
+    freezer.tick(timedelta(minutes=5))
+    await refresh(hass, config_entry)
+    assert mock_api.async_get_solar_thermal.await_count == 1
+    freezer.tick(timedelta(minutes=10))
+    await refresh(hass, config_entry)
+    assert mock_api.async_get_solar_thermal.await_count == 2
+
+
+async def test_solar_thermal_details_fail(
+    hass: HomeAssistant, hass_client, config_entry, mock_api, appliance, freezer
+) -> None:
+    """A failed request doesn't break the update, and isn't repeated every minute."""
+    appliance["solarThermals"] = [
+        {"solarThermalId": SOLAR_THERMAL_ID, "status": "Standby"}
+    ]
+    mock_api.async_get_solar_thermal.side_effect = ClientResponseError(
+        MagicMock(), (), status=404
+    )
+    await setup_integration(hass, config_entry, mock_api)
+
+    assert hass.states.get("climate.woonkamer") is not None
+    freezer.tick(timedelta(minutes=1))
+    await refresh(hass, config_entry)
+    assert mock_api.async_get_solar_thermal.await_count == 1
+
+    diagnostics = await get_diagnostics_for_config_entry(
+        hass, hass_client, config_entry
+    )
+    assert diagnostics["solar_thermals"] == {}
