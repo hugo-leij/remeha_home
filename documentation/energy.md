@@ -47,6 +47,13 @@ complete. The API's gas kWh differ from the m³ shown by the existing gas
 sensors. Remeha's figures are **estimates**, not independently metered
 values. No entities or Home Assistant statistics are changed.
 
+Each day also lists its producers (heat sources) in `producers`, with their
+energy for heating, hot water and in total: `heating_consumed_kwh`,
+`heating_delivered_kwh`, `hot_water_consumed_kwh`, `hot_water_delivered_kwh`,
+`total_consumed_kwh` and `total_delivered_kwh`. This includes producers without a
+heat pump or gas field, such as a solar thermal system, which may only report hot
+water or total energy.
+
 Each day and the period also have the totals of the appliance as Remeha reports
 them: `appliance_heating_consumed_kwh`, `appliance_heating_delivered_kwh`,
 `appliance_hot_water_consumed_kwh` and `appliance_hot_water_delivered_kwh`.

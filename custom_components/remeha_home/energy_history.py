@@ -28,6 +28,17 @@ APPLIANCE_TOTALS = {
 }
 HISTORY_BATCH_DAYS = 31
 
+# The figures of each producer in the response, and their fields in the API. A
+# solar thermal system may only report hot water or total energy.
+PRODUCER_FIGURES = {
+    "heating_consumed_kwh": "energyConsumptionCH",
+    "heating_delivered_kwh": "energyProductionCH",
+    "hot_water_consumed_kwh": "energyConsumptionDHW",
+    "hot_water_delivered_kwh": "energyProductionDHW",
+    "total_consumed_kwh": "energyConsumptionTotal",
+    "total_delivered_kwh": "energyProductionTotal",
+}
+
 
 def history_batches(start: date, end: date):
     """Yield inclusive date ranges, with bounded requests to Remeha's API."""
@@ -118,12 +129,10 @@ def normalize_history_day(item: dict) -> dict | None:
             {
                 "producer_type": kind,
                 "energy_type": source,
-                "heating_consumed_kwh": _energy(
-                    producer.get("energyConsumptionCH")
-                ),
-                "heating_delivered_kwh": _energy(
-                    producer.get("energyProductionCH")
-                ),
+                **{
+                    figure: _energy(producer.get(field))
+                    for figure, field in PRODUCER_FIGURES.items()
+                },
             }
         )
 
@@ -191,16 +200,14 @@ def _round_day(row: dict) -> dict:
     rounded["producers"] = [
         {
             **producer,
-            "heating_consumed_kwh": (
-                round(producer["heating_consumed_kwh"], 2)
-                if producer["heating_consumed_kwh"] is not None
-                else None
-            ),
-            "heating_delivered_kwh": (
-                round(producer["heating_delivered_kwh"], 2)
-                if producer["heating_delivered_kwh"] is not None
-                else None
-            ),
+            **{
+                figure: (
+                    round(producer[figure], 2)
+                    if producer[figure] is not None
+                    else None
+                )
+                for figure in PRODUCER_FIGURES
+            },
         }
         for producer in row["producers"]
     ]

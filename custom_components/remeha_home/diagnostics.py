@@ -19,7 +19,9 @@ async def async_get_config_entry_diagnostics(
     The dashboard is the one the integration holds, with what it adds: per
     appliance the energy consumption of the day the sensors show (heating and hot
     water of a gas boiler in m³, null producer values 0), per climate zone the
-    heating curve and per hot water zone the current activity.
+    heating curve and per hot water zone the current activity. The solar thermal
+    systems are the responses of their details request, for finding out what it
+    reports.
     """
     coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
     return async_redact_data(
@@ -29,6 +31,7 @@ async def async_get_config_entry_diagnostics(
             "technical_info": coordinator.technical_info,
             "activities": coordinator.activities_data,
             "time_programs": coordinator.time_program_data,
+            "solar_thermals": coordinator.solar_thermal_data,
         },
         TO_REDACT,
     )

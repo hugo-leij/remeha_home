@@ -215,6 +215,19 @@ class RemehaHomeAPI:
         response.raise_for_status()
         return await response.json()
 
+    async def async_get_solar_thermal(self, solar_thermal_id: str) -> dict:
+        """Get the details of a solar thermal system.
+
+        The route exists: with an unknown id it answers 404 "Given Solar Thermal Id
+        does not exist.". Its response isn't known yet, so it's only kept for the
+        diagnostics.
+        """
+        response = await self._async_api_request(
+            "GET", f"/solarthermals/{solar_thermal_id}"
+        )
+        response.raise_for_status()
+        return await response.json()
+
     async def async_get_heating_time_program(
         self, climate_zone_id: str, time_program_id: int
     ) -> dict:
