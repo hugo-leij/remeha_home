@@ -438,9 +438,40 @@ The integration saves the modes when a holiday starts, and sets them again when 
 GET /solarthermals/{solar_thermal_id}
 ```
 
-Probably returns the details that the app shows on its solar thermal page, such as the collector and storage temperature. The id is `solarThermalId` from `solarThermals` in the [dashboard](#get-the-dashboard).
-The route exists: with an unknown id it answers 404 with `"detail": "Given Solar Thermal Id does not exist."`, like the other endpoints with an unknown id, while an unknown route answers `"message": "Resource not found"` (checked on 2026-11-23).
-Its response is not known yet. The integration requests it every 15 minutes and only puts it in the diagnostics (`solar_thermals`), to find out what it reports.
+Returns the details that the app shows on its solar thermal page. The id is `solarThermalId` from `solarThermals` in the [dashboard](#get-the-dashboard).
+With an unknown id it answers 404 with `"detail": "Given Solar Thermal Id does not exist."`.
+The integration requests it every 5 minutes for the sensors of the Solar Thermal System device, and puts it in the diagnostics (`solar_thermals`).
+
+Measured on a BRÖTJE BLW Eco-R heat pump with solar thermal on an SCB-17B extension board (#54), ids removed:
+```json
+{
+  "solarThermalId": "<id>",
+  "applianceId": "<id>",
+  "solarThermalDeviceId": "<id>",
+  "status": "Standby",
+  "tankTemperature": 38.6,
+  "panelTemperature": -1.04,
+  "pumpSpeed": 0.0,
+  "dhwTankNominalTemperature": 43.0,
+  "dhwTankNominalTemperatureMin": 8.0,
+  "dhwTankNominalTemperatureMax": 60.0,
+  "dhwTankNominalTemperatureIncrement": 1.0,
+  "chTankNominalTemperature": null,
+  "chTankNominalTemperatureMin": 8.0,
+  "chTankNominalTemperatureMax": 60.0,
+  "chTankNominalTemperatureIncrement": 1.0
+}
+```
+
+| Field | Values and notes |
+|---|---|
+| `panelTemperature` | Collector temperature (°C), the sensor on the roof |
+| `tankTemperature` | Tank temperature at the solar sensor near the bottom (°C), lower than `dhwTemperature` at the top |
+| `pumpSpeed` | Speed of the solar pump, probably in % (it is PWM controlled) |
+| `dhwTankNominalTemperature` | The hot water setpoint that applies now, e.g. the Eco setpoint, with its range |
+| `chTankNominalTemperature` | The same for a heating buffer tank, `null` without one |
+
+The yield of the solar thermal system is in the [energy consumption](#energy-consumption) as a producer with `producerType` and `energyType` `SolarThermal`: `energyProductionDHW` and `energyProductionTotal` (whole kWh), with the heating energy `null` and the consumption 0. On some days the producer was missing altogether.
 
 ## Climate zones
 

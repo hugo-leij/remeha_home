@@ -44,6 +44,7 @@ PRODUCER_TYPE_NAMES = {
     "OilBoiler": "Oil Boiler",
     "ElectricBoiler": "Electric Boiler",
     "CHP": "CHP",
+    "SolarThermal": "Solar Thermal",
 }
 
 PRODUCER_STATS = [
@@ -167,7 +168,7 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
         self.activities_last_update: dict[str, datetime] = {}
         # The switching points of the active clock program of each zone
         self.time_program_data: dict[str, dict] = {}
-        # The details of each solar thermal system, only for the diagnostics
+        # The details of each solar thermal system: temperatures and pump speed
         self.solar_thermal_data: dict[str, object] = {}
         self.solar_thermal_last_update: dict[str, datetime] = {}
         self.time_program_last_update: dict[str, datetime] = {}
@@ -364,8 +365,10 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
 
             for solar_thermal in solar_thermals(appliance):
                 solar_thermal_id = solar_thermal["solarThermalId"]
-                self.items[solar_thermal_id] = solar_thermal
                 await self._async_update_solar_thermal(solar_thermal_id, now)
+                # The temperatures and pump speed for the sensors of the device
+                solar_thermal["details"] = self.solar_thermal_data.get(solar_thermal_id)
+                self.items[solar_thermal_id] = solar_thermal
                 self.device_info[solar_thermal_id] = DeviceInfo(
                     identifiers={(DOMAIN, solar_thermal_id)},
                     name="Solar Thermal System",
@@ -608,15 +611,16 @@ class RemehaHomeUpdateCoordinator(DataUpdateCoordinator):
     async def _async_update_solar_thermal(
         self, solar_thermal_id: str, now: datetime
     ) -> None:
-        """Request the details of a solar thermal system every 15 minutes.
+        """Request the details of a solar thermal system every 5 minutes.
 
-        The response isn't known yet, so it's only kept for the diagnostics. A failed
-        request is tried again after 15 minutes as well, so an appliance without
+        They have the collector and tank temperature and the pump speed, which
+        change quickly when the sun comes out. A failed request keeps the last
+        details and is tried again after 5 minutes as well, so an appliance without
         these details doesn't cause a request every minute.
         """
         last_update = self.solar_thermal_last_update.get(solar_thermal_id)
         if last_update is not None and now - last_update < timedelta(
-            minutes=14, seconds=45
+            minutes=4, seconds=45
         ):
             return
         self.solar_thermal_last_update[solar_thermal_id] = now
