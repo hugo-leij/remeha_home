@@ -12,6 +12,7 @@ from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
 )
 from homeassistant.const import (
+    PERCENTAGE,
     EntityCategory,
     UnitOfEnergy,
     UnitOfTemperature,
@@ -213,6 +214,17 @@ GAS_PRODUCER_SENSOR_TYPES = [
     )
 ]
 
+# A solar thermal system reports its yield as hot water energy delivered
+SOLAR_THERMAL_PRODUCER_SENSOR_TYPES = [
+    SensorEntityDescription(
+        key="energyProductionDHW",
+        name="Hot Water Energy Delivered",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+]
+
 CLIMATE_ZONE_SENSOR_TYPES = [
     SensorEntityDescription(
         key="roomTemperature",
@@ -272,6 +284,38 @@ SOLAR_THERMAL_SENSOR_TYPES = [
         key="status",
         name="Status",
         icon="mdi:solar-power-variant",
+    ),
+]
+
+# From the details of a solar thermal system, only added when it reports them
+SOLAR_THERMAL_DETAIL_SENSOR_TYPES = [
+    SensorEntityDescription(
+        key="details.panelTemperature",
+        name="Collector Temperature",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    SensorEntityDescription(
+        key="details.tankTemperature",
+        name="Tank Temperature",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    SensorEntityDescription(
+        key="details.pumpSpeed",
+        name="Pump Speed",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:pump",
+    ),
+    SensorEntityDescription(
+        key="details.dhwTankNominalTemperature",
+        name="Hot Water Setpoint",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
 ]
 

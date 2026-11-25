@@ -149,7 +149,7 @@ async def test_solar_thermal_details(
     """The details of a solar thermal system are in the diagnostics.
 
     Its response isn't known yet, so the diagnostics are the way to find out what
-    it reports. It is requested every 15 minutes.
+    it reports. It is requested every 5 minutes.
     """
     appliance["solarThermals"] = [
         {"solarThermalId": SOLAR_THERMAL_ID, "status": "Standby"}
@@ -169,10 +169,10 @@ async def test_solar_thermal_details(
     assert details["collectorTemperature"] == 6.0
     assert details["name"] == REDACTED
 
-    freezer.tick(timedelta(minutes=5))
+    freezer.tick(timedelta(minutes=2))
     await refresh(hass, config_entry)
     assert mock_api.async_get_solar_thermal.await_count == 1
-    freezer.tick(timedelta(minutes=10))
+    freezer.tick(timedelta(minutes=3))
     await refresh(hass, config_entry)
     assert mock_api.async_get_solar_thermal.await_count == 2
 

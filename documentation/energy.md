@@ -18,6 +18,7 @@ Most of that gas is missing from the Remeha data, and some of it may show up as 
 
 On a hybrid system, the energy consumed by the appliance as a whole is the electricity of the heat pump plus the gas of the gas boiler, both in kWh.
 For the [Energy dashboard](https://www.home-assistant.io/docs/energy/), use the sensors of the producers instead: the heat pump's energy consumed as electricity, and the gas boiler's gas in m³ as gas.
+A solar thermal system has a Hot Water Energy Delivered sensor with its yield of the day. It is heat from the sun, not energy you buy, so it doesn't belong under electricity or gas; use it on a dashboard card or as an individual device.
 
 ## Read-only energy history
 

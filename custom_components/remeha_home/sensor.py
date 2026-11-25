@@ -26,6 +26,8 @@ from .const import (
     GAS_PRODUCER_SENSOR_TYPES,
     ELECTRIC_PRODUCER_SENSOR_TYPES,
     PRESET_INDEX_TO_PRESET_MODE,
+    SOLAR_THERMAL_DETAIL_SENSOR_TYPES,
+    SOLAR_THERMAL_PRODUCER_SENSOR_TYPES,
     SOLAR_THERMAL_SENSOR_TYPES,
 )
 from .coordinator import (
@@ -126,11 +128,17 @@ async def async_setup_entry(
                     )
                 )
         for solar_thermal in solar_thermals(appliance):
+            details = solar_thermal.get("details") or {}
             entities.extend(
                 RemehaHomeSensor(
                     coordinator, solar_thermal["solarThermalId"], entity_description
                 )
                 for entity_description in SOLAR_THERMAL_SENSOR_TYPES
+                + [
+                    description
+                    for description in SOLAR_THERMAL_DETAIL_SENSOR_TYPES
+                    if details.get(description.key.split(".")[-1]) is not None
+                ]
             )
     async_add_entities(entities)
 
@@ -162,6 +170,8 @@ async def async_setup_entry(
                     entity_descriptions = GAS_PRODUCER_SENSOR_TYPES
                 elif producer.get("energyType") == "Electric":
                     entity_descriptions = ELECTRIC_PRODUCER_SENSOR_TYPES
+                elif producer.get("producerType") == "SolarThermal":
+                    entity_descriptions = SOLAR_THERMAL_PRODUCER_SENSOR_TYPES
                 else:
                     # Unsupported energy sources must not get electrical sensors.
                     continue

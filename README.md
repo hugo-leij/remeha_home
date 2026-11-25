@@ -31,7 +31,7 @@ You can simply log in using the credentials that you would use in the respective
 - **Heating curve and activity temperatures**: read and change them, as in the Remeha Home app.
 - **Holiday mode**: schedule and cancel a holiday; afterwards the integration sets the zones back to their modes. See [Holiday mode](#holiday-mode).
 - **Energy** per heat source, such as the heat pump and the gas boiler of a hybrid system, and an action to look back at earlier days. See [Energy](#energy).
-- **Status**: water pressure, online, what the appliance is doing, errors, pre-heat, the outdoor temperature and the status of a solar thermal system.
+- **Status**: water pressure, online, what the appliance is doing, errors, pre-heat, the outdoor temperature, and a solar thermal system with its status, temperatures and yield.
 
 All entities and what they show are listed in [Entities](https://github.com/hugo-leij/remeha_home/blob/main/documentation/entities.md).
 

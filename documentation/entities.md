@@ -57,9 +57,15 @@ The entities that the integration creates, per climate zone, hot water zone, app
     - The outdoor temperature measured by the appliance, and the outdoor temperature from the Remeha cloud (disabled by default)
     - Holiday mode (binary sensor), with the scheduled `start_date` and `end_date` as attributes, and actions to schedule and cancel a holiday. After a holiday, the integration sets the zones back to their modes. See [Holiday mode](holiday-mode.md).
     - The energy consumed and delivered today for heating, hot water and cooling, for the appliance as a whole (disabled by default)
-- A solar thermal system connected to an appliance is a separate device with its status (e.g. Standby).
+- A solar thermal system connected to an appliance is a separate device (Solar Thermal System) with:
+    - Its status (e.g. Standby)
+    - The collector temperature, the tank temperature at the solar sensor and the speed of the solar pump, updated every 5 minutes
+    - The hot water setpoint that applies now (diagnostic)
+
+    Its yield is on the Solar Thermal producer device, see below.
 - Each producer (heat source) of an appliance, such as the heat pump and the gas boiler of a hybrid system, is a separate device with:
     - For heat pumps (and other electric producers): the energy consumed and delivered today for heating, hot water and cooling, and the seasonal efficiency
     - For gas boilers: the gas used today for heating and hot water, in m³
+    - For a solar thermal system: the hot water energy delivered today, its yield
 
     See [Energy](energy.md) for what these values mean, and which ones to use for the Energy dashboard.
